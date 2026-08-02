@@ -31,7 +31,17 @@ function getConfigPath(): string {
  */
 export function readPersistedConfig(): PersistedConfig {
   try {
-    const raw = fs.readFileSync(getConfigPath(), "utf-8");
+    // `Set-Content -Encoding UTF8` no Windows PowerShell 5.1 (o `powershell.exe`
+    // embutido, diferente do `pwsh` moderno) grava um BOM UTF-8 no início do
+    // arquivo — `JSON.parse` não tolera esse caractere invisível antes do `{`
+    // e lança, então removê-lo aqui é necessário mesmo que install.ps1 evite
+    // escrevê-lo (defesa em profundidade: alguém pode reeditar o arquivo com
+    // outra ferramenta que reintroduza o BOM).
+    const rawWithPossibleBom = fs.readFileSync(getConfigPath(), "utf-8");
+    const raw =
+      rawWithPossibleBom.charCodeAt(0) === 0xfeff
+        ? rawWithPossibleBom.slice(1)
+        : rawWithPossibleBom;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return {};
 

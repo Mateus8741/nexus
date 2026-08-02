@@ -59,7 +59,12 @@ Copy-Item -Path $exeSource -Destination $exeDest -Force
 
 $configPath = Join-Path $installDir "config.json"
 $config = @{ coreUrl = $CoreUrl; deviceName = $DeviceName } | ConvertTo-Json
-Set-Content -Path $configPath -Value $config -Encoding UTF8
+# NÃO usar `Set-Content -Encoding UTF8` aqui: no Windows PowerShell 5.1 (o
+# `powershell.exe` embutido) isso grava um BOM UTF-8 no início do arquivo,
+# que quebra o `JSON.parse` do lado do Agent (Node/Bun não descartam BOM
+# automaticamente). `[System.Text.UTF8Encoding]::new($false)` escreve UTF-8
+# sem BOM.
+[System.IO.File]::WriteAllText($configPath, $config, [System.Text.UTF8Encoding]::new($false))
 
 $logPath = Join-Path $installDir "agent.log"
 $vbsPath = Join-Path $installDir "launcher.vbs"
