@@ -184,13 +184,6 @@ export class WindowsDeviceProvider implements DeviceProvider {
     });
 
     this.emit({ type: "device.connected", deviceId, occurredAt: now });
-    this.emit({
-      type: "device.state-changed",
-      deviceId,
-      occurredAt: now,
-      previousState: previous?.device.state,
-      currentState: device.state,
-    });
   }
 
   private handleHeartbeat(agentId: string): void {
@@ -255,13 +248,6 @@ export class WindowsDeviceProvider implements DeviceProvider {
     entry.device = { ...entry.device, state: currentState };
 
     this.emit({ type: "device.disconnected", deviceId, occurredAt: now, reason });
-    this.emit({
-      type: "device.state-changed",
-      deviceId,
-      occurredAt: now,
-      previousState,
-      currentState,
-    });
   }
 
   private scheduleHeartbeatTimeout(deviceId: string): ReturnType<typeof setTimeout> {

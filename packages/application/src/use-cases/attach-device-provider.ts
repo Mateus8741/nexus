@@ -63,6 +63,9 @@ export class AttachDeviceProviderUseCase {
         break;
       }
       case "device.state-changed": {
+        // Métricas periódicas (ex.: Windows Agent a cada ~15s) atualizam
+        // atributos numéricos mas não mudam online/offline — o registry
+        // precisa refletir isso, mas o feed de eventos não.
         this.deviceRegistry.updateState(event.deviceId, event.currentState);
         break;
       }
@@ -83,9 +86,11 @@ export class AttachDeviceProviderUseCase {
       }
     }
 
-    // Repassa o evento original (com toda a fidelidade que só o provider
-    // tem) para quem estiver assinado no registry — ver DeviceRegistry.notify.
-    this.deviceRegistry.notify(event);
+    if (shouldNotifyEvent(event)) {
+      // Repassa o evento original (com toda a fidelidade que só o provider
+      // tem) para quem estiver assinado no registry — ver DeviceRegistry.notify.
+      this.deviceRegistry.notify(event);
+    }
   }
 
   private async syncFromProvider(provider: DeviceProvider, deviceId: string): Promise<void> {
@@ -93,4 +98,9 @@ export class AttachDeviceProviderUseCase {
     const device = devices.find((candidate) => candidate.id === deviceId);
     if (device) this.upsert(device);
   }
+}
+
+function shouldNotifyEvent(event: DeviceEvent): boolean {
+  if (event.type !== "device.state-changed") return true;
+  return event.previousState?.status !== event.currentState.status;
 }
