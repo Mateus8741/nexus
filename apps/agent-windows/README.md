@@ -72,7 +72,7 @@ $env:NEXUS_CORE_URL="wss://core.seudominio.com"; .\nexus-agent-windows.exe
 
 ## Instalação permanente (roda sozinho, em segundo plano)
 
-Pra não precisar abrir terminal e digitar comando toda vez que for colocar o Agent numa máquina nova, use `scripts/install.ps1`: ele copia o `.exe`, salva a configuração (`NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME`) e registra uma Tarefa Agendada do Windows que roda o Agent escondido (sem janela) sempre que o usuário fizer login — e já inicia na hora, sem esperar o próximo login.
+Pra não precisar abrir terminal e digitar comando toda vez que for colocar o Agent numa máquina nova, use `scripts/install.ps1`: ele copia o `.exe`, salva a configuração (`NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME`) e coloca o Agent na pasta "Inicializar" do usuário, que o Windows roda automaticamente (escondido, sem janela) sempre que ele fizer login — e já inicia na hora, sem esperar o próximo login. Não depende do Task Scheduler, então funciona mesmo em PCs corporativos com política de grupo restritiva.
 
 Copie `nexus-agent-windows.exe`, `scripts/install.ps1` e `scripts/uninstall.ps1` para a mesma pasta na máquina Windows e, no PowerShell:
 

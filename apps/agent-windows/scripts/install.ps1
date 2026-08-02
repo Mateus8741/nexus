@@ -13,11 +13,15 @@
   3. Gera um pequeno "launcher" (.vbs) que roda o Agent com a janela do
      console escondida, redirecionando toda a saída para agent.log (útil
      para diagnosticar problema sem precisar rodar na mão de novo).
-  4. Registra uma Tarefa Agendada do Windows (Task Scheduler) que dispara
-     esse launcher no login deste usuário, e já inicia agora mesmo.
+  4. Copia esse launcher para a pasta "Inicializar" (Startup) do usuário
+     atual — o Windows roda automaticamente qualquer coisa ali sempre que
+     esse usuário faz login — e já inicia agora mesmo, sem esperar o
+     próximo login.
 
-  Não precisa rodar como Administrador — tudo fica dentro da pasta do
-  usuário atual e a tarefa roda com os privilégios normais dele.
+  Não precisa rodar como Administrador nem depende do Task Scheduler:
+  tudo fica dentro da pasta do próprio usuário (%LOCALAPPDATA% e a pasta
+  Startup dele), então funciona mesmo em PCs corporativos/gerenciados que
+  bloqueiam a criação de Tarefas Agendadas por política de grupo.
 
 .PARAMETER CoreUrl
   URL do Core (ws://IP:PORTA para rede local, wss://dominio para nuvem).
@@ -65,14 +69,19 @@ $vbsContent = @(
 )
 Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII
 
-$taskName = "NexusAgent"
-schtasks /Create /F /SC ONLOGON /TN $taskName /TR "wscript.exe `"$vbsPath`"" /RL LIMITED | Out-Null
+# Pasta "Inicializar" do usuário atual (%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup)
+# — o Windows executa automaticamente qualquer coisa ali no login deste
+# usuário. Não depende do Task Scheduler nem de nenhuma permissão especial;
+# funciona mesmo em PCs corporativos que bloqueiam Tarefas Agendadas.
+$startupDir = [Environment]::GetFolderPath("Startup")
+$startupLauncher = Join-Path $startupDir "NexusAgent.vbs"
+Copy-Item -Path $vbsPath -Destination $startupLauncher -Force
 
 # Inicia agora, sem esperar o próximo login
 Start-Process -FilePath "wscript.exe" -ArgumentList "`"$vbsPath`""
 
 Write-Host ""
 Write-Host "Nexus Agent instalado e rodando em segundo plano."
-Write-Host "Vai iniciar sozinho sempre que $env:USERNAME fizer login neste PC — não precisa mais rodar comando nenhum."
+Write-Host "Vai iniciar sozinho sempre que $env:USERNAME fizer login neste PC (via pasta Inicializar) — não precisa mais rodar comando nenhum."
 Write-Host "Log em: $logPath"
 Write-Host "Para desinstalar: rode uninstall.ps1 (mesma pasta deste script)."
