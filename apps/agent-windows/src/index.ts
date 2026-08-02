@@ -1,6 +1,7 @@
 import os from "node:os";
 import { WindowsAgent } from "./agent";
 import { getOrCreateAgentId } from "./agent-id";
+import { readPersistedConfig } from "./config";
 import { discoverCore } from "./discovery";
 import { createSystemActions } from "./system-actions";
 
@@ -9,17 +10,22 @@ import { createSystemActions } from "./system-actions";
  * monitorada, separado da aplicação principal (apps/plugin-host). Coleta
  * métricas, se registra automaticamente e executa ações vindas do Core.
  *
- * Configuração via variáveis de ambiente: NEXUS_CORE_URL e
- * NEXUS_DEVICE_NAME (padrão: hostname da máquina). Se NEXUS_CORE_URL não
- * for definido, o Agent tenta descobrir o Core sozinho via broadcast UDP
- * na rede local (ver ./discovery.ts) antes de desistir.
+ * Configuração, em ordem de prioridade: variáveis de ambiente
+ * (NEXUS_CORE_URL/NEXUS_DEVICE_NAME) → config persistida por
+ * scripts/install.ps1 na instalação (ver ./config.ts) → descoberta
+ * automática via broadcast UDP na rede local (ver ./discovery.ts) → falha
+ * com instruções. O caso comum, depois de instalado via install.ps1, nunca
+ * chega além do segundo passo — é isso que permite rodar sem digitar
+ * comando nenhum numa máquina nova (ver README.md).
  */
 
 async function main(): Promise<void> {
-  const deviceName = process.env.NEXUS_DEVICE_NAME ?? os.hostname();
+  const persisted = readPersistedConfig();
+
+  const deviceName = process.env.NEXUS_DEVICE_NAME ?? persisted.deviceName ?? os.hostname();
   const agentId = getOrCreateAgentId();
 
-  let coreUrl = process.env.NEXUS_CORE_URL;
+  let coreUrl = process.env.NEXUS_CORE_URL ?? persisted.coreUrl;
   if (!coreUrl) {
     console.log("[agent-windows] NEXUS_CORE_URL não definido, procurando o Core na rede local...");
     const found = await discoverCore();
@@ -28,9 +34,10 @@ async function main(): Promise<void> {
         "[agent-windows] Não encontrei o Core automaticamente na rede local (tentei por 3s).\n" +
           "A descoberta automática só funciona quando o Core está na mesma rede local (broadcast " +
           "UDP não atravessa a internet) — se o Core estiver hospedado na nuvem (ex.: Coolify), " +
-          "isso é esperado: use sempre NEXUS_CORE_URL manualmente nesse caso.\n" +
+          "isso é esperado: use sempre NEXUS_CORE_URL manualmente nesse caso, ou instale via " +
+          "scripts/install.ps1 (ver README.md) para não precisar disso de novo.\n" +
           "Defina NEXUS_CORE_URL e rode de novo, ex.:\n" +
-          "  set NEXUS_CORE_URL=ws://192.168.1.10:4600          (Core na rede local)\n" +
+          "  set NEXUS_CORE_URL=ws://192.168.1.10:4700          (Core na rede local)\n" +
           "  set NEXUS_CORE_URL=wss://core.seudominio.com       (Core na nuvem, com TLS)",
       );
       process.exitCode = 1;

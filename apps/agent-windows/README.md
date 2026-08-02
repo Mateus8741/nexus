@@ -70,4 +70,28 @@ $env:NEXUS_CORE_URL="wss://core.seudominio.com"; .\nexus-agent-windows.exe
 
 `dist/` é ignorado pelo `.gitignore` e pelo Biome — o executável é sempre gerado sob demanda a partir do código-fonte, nunca é a fonte da verdade. Rode o `package:windows` de novo sempre que `src/` ou `@nexus/agent-protocol` mudarem.
 
-Sem instalador/serviço Windows nesta etapa — é só um `.exe` que roda em primeiro plano (uma janela de terminal fica aberta). Rodar como serviço do Windows (iniciar sozinho no boot, sem janela) é um passo futuro.
+## Instalação permanente (roda sozinho, em segundo plano)
+
+Pra não precisar abrir terminal e digitar comando toda vez que for colocar o Agent numa máquina nova, use `scripts/install.ps1`: ele copia o `.exe`, salva a configuração (`NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME`) e registra uma Tarefa Agendada do Windows que roda o Agent escondido (sem janela) sempre que o usuário fizer login — e já inicia na hora, sem esperar o próximo login.
+
+Copie `nexus-agent-windows.exe`, `scripts/install.ps1` e `scripts/uninstall.ps1` para a mesma pasta na máquina Windows e, no PowerShell:
+
+```powershell
+.\install.ps1 -CoreUrl "wss://core.seudominio.com" -DeviceName "PC-da-Sala"
+```
+
+(ou `-CoreUrl "ws://192.168.0.8:4700"` se o Core estiver na rede local). Não precisa rodar como Administrador. Depois disso, nunca mais é preciso setar `NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME` manualmente nessa máquina — ficam persistidos em `%LOCALAPPDATA%\NexusAgent\config.json`, que o Agent lê sozinho (ver `src/config.ts`; variável de ambiente, se definida, ainda tem prioridade sobre isso).
+
+A saída do processo (logs) fica em `%LOCALAPPDATA%\NexusAgent\agent.log`, útil para diagnosticar sem precisar rodar na mão de novo.
+
+Para remover tudo (tarefa agendada, processo, arquivos):
+
+```powershell
+.\uninstall.ps1
+```
+
+Isso ainda não é um "serviço do Windows" de verdade (não inicia antes de qualquer login, ex.: numa máquina que reinicia sem ninguém logar) — é uma Tarefa Agendada disparada no login do usuário, o que cobre o caso comum (PC de mesa/notebook de uso pessoal). Virar um serviço real (`Local System`, inicia no boot sem login) é um passo futuro, se necessário.
+
+## Sem instalação permanente (rodando manualmente, uma vez)
+
+Sem o `install.ps1`, o `.exe` roda em primeiro plano (uma janela de terminal fica aberta) — útil para testar rapidamente antes de instalar de vez.
