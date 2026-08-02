@@ -33,7 +33,12 @@ export function SetupForm() {
       }
       router.push("/login");
     } catch (err) {
-      setError(String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(
+        message.includes("Failed to fetch")
+          ? `Não foi possível alcançar o Core em ${CORE_URL}. Confirme que o plugin-host está rodando.`
+          : message,
+      );
     } finally {
       setLoading(false);
     }
