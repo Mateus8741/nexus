@@ -70,10 +70,16 @@ $config = @{ coreUrl = $CoreUrl; deviceName = $DeviceName } | ConvertTo-Json
 [System.IO.File]::WriteAllText($configPath, $config, [System.Text.UTF8Encoding]::new($false))
 
 # Limpa artefatos de versões anteriores deste instalador (Tarefa Agendada
-# e launcher .vbs) — não faz mal se não existirem.
+# e launcher .vbs) — não faz mal se não existirem. `schtasks` escreve
+# direto no stderr quando a tarefa não existe, e com `$ErrorActionPreference
+# = "Stop"` isso vira um erro que interrompe o script inteiro — por isso o
+# rebaixamento temporário abaixo, só para este trecho "melhor esforço".
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
 schtasks /Delete /TN "NexusAgent" /F 2>$null | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $installDir "launcher.vbs")
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path ([Environment]::GetFolderPath("Startup")) "NexusAgent.vbs")
+$ErrorActionPreference = $previousErrorActionPreference
 
 $logPath = Join-Path $installDir "agent.log"
 $errLogPath = Join-Path $installDir "agent.err.log"

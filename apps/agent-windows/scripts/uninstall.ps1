@@ -12,7 +12,7 @@ $exeDest = Join-Path $installDir "nexus-agent-windows.exe"
 # Versões anteriores deste instalador usavam Tarefa Agendada e/ou um
 # launcher .vbs em vez do atalho .lnk atual — tentar remover os três não
 # faz mal se algum não existir.
-schtasks /Delete /TN "NexusAgent" /F | Out-Null
+schtasks /Delete /TN "NexusAgent" /F 2>$null | Out-Null
 
 $startupDir = [Environment]::GetFolderPath("Startup")
 Remove-Item -Force (Join-Path $startupDir "NexusAgent.vbs")
