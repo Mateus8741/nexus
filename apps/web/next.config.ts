@@ -7,6 +7,12 @@ const nextConfig: NextConfig = {
    * porque eles vivem fora de apps/web.
    */
   transpilePackages: ["@nexus/ui", "@nexus/domain", "@nexus/application", "@nexus/infrastructure"],
+  /**
+   * Gera `.next/standalone`: um server.js autocontido com só os arquivos e
+   * node_modules realmente usados em produção — a imagem Docker (ver
+   * Dockerfile) copia só isso, em vez do monorepo inteiro.
+   */
+  output: "standalone",
 };
 
 export default nextConfig;

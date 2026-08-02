@@ -1,10 +1,27 @@
+import type { Server as HttpServer } from "node:http";
+
 import type { AgentConnection, AgentGateway } from "@nexus/plugins-sdk";
 import type { RawData, WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 
-export interface WebSocketAgentGatewayOptions {
-  readonly port: number;
-}
+/**
+ * Duas formas de expor o WebSocket:
+ *
+ * - `{ port }` — sobe um servidor TCP próprio, dedicado. Simples para rodar
+ *   localmente, mas exige uma porta extra exposta — problemático atrás de um
+ *   reverse proxy que só encaminha um domínio para uma única porta HTTP
+ *   (ex.: Coolify/Traefik).
+ * - `{ server, path? }` — "pluga" no upgrade de um `http.Server` já
+ *   existente (ex.: o mesmo servidor da API HTTP do plugin-host). Upgrades
+ *   HTTP→WebSocket acontecem sobre o mesmo host/porta que o resto do
+ *   tráfego HTTP, então um único domínio/porta exposta pelo Coolify basta
+ *   para os dois. `path` filtra quais requisições de upgrade este gateway
+ *   aceita (default: aceita qualquer path — ok quando o servidor não serve
+ *   mais nada além disto).
+ */
+export type WebSocketAgentGatewayOptions =
+  | { readonly port: number }
+  | { readonly server: HttpServer; readonly path?: string };
 
 /**
  * Implementação concreta de AgentGateway (@nexus/plugins-sdk) usando um
@@ -22,7 +39,10 @@ export class WebSocketAgentGateway implements AgentGateway {
   private nextConnectionId = 1;
 
   constructor(options: WebSocketAgentGatewayOptions) {
-    this.server = new WebSocketServer({ port: options.port });
+    this.server =
+      "server" in options
+        ? new WebSocketServer({ server: options.server, path: options.path })
+        : new WebSocketServer({ port: options.port });
     this.server.on("connection", (socket) => {
       const connection = this.wrap(socket);
       for (const listener of this.listeners) {

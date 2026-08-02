@@ -28,8 +28,8 @@ export interface DiscoveryResponseMessage {
   readonly type: "nexus-here";
   readonly protocolVersion: string;
   readonly hostname: string;
-  readonly wsPort: number;
-  readonly httpPort: number;
+  /** Porta única onde o Core serve HTTP e WebSocket (mesmo processo/servidor — ver ARCHITECTURE.md). */
+  readonly port: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -46,7 +46,6 @@ export function isDiscoveryResponseMessage(value: unknown): value is DiscoveryRe
   if (value.type !== "nexus-here") return false;
   if (typeof value.protocolVersion !== "string") return false;
   if (typeof value.hostname !== "string") return false;
-  if (typeof value.wsPort !== "number") return false;
-  if (typeof value.httpPort !== "number") return false;
+  if (typeof value.port !== "number") return false;
   return true;
 }

@@ -20,3 +20,11 @@ bunx shadcn@latest add button
 ```
 
 O CLI detecta o monorepo e instala o componente em `packages/ui`, ajustando os imports automaticamente.
+
+## Variáveis de ambiente
+
+- `NEXUS_PLUGIN_HOST_URL` — URL do `apps/plugin-host` (Core) que este Dashboard consome via fetch server-side (`lib/nexus-client.ts`). Padrão `http://localhost:4700` para desenvolvimento local; em produção (ver deploy abaixo), a URL pública do Core (ex.: `https://core.seudominio.com`).
+
+## Deploy em produção
+
+Ver `Dockerfile` neste diretório e ARCHITECTURE.md seção 16 (deploy no Coolify) — build context deve ser a raiz do monorepo, não `apps/web`.

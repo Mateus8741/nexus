@@ -26,15 +26,17 @@ async function main(): Promise<void> {
     if (!found) {
       console.error(
         "[agent-windows] Não encontrei o Core automaticamente na rede local (tentei por 3s).\n" +
-          "Isso pode acontecer se o Core não estiver rodando, se um firewall estiver bloqueando " +
-          "broadcast UDP, ou se as máquinas estiverem em sub-redes diferentes.\n" +
-          "Defina NEXUS_CORE_URL manualmente e rode de novo, ex.:\n" +
-          "  set NEXUS_CORE_URL=ws://192.168.1.10:4600",
+          "A descoberta automática só funciona quando o Core está na mesma rede local (broadcast " +
+          "UDP não atravessa a internet) — se o Core estiver hospedado na nuvem (ex.: Coolify), " +
+          "isso é esperado: use sempre NEXUS_CORE_URL manualmente nesse caso.\n" +
+          "Defina NEXUS_CORE_URL e rode de novo, ex.:\n" +
+          "  set NEXUS_CORE_URL=ws://192.168.1.10:4600          (Core na rede local)\n" +
+          "  set NEXUS_CORE_URL=wss://core.seudominio.com       (Core na nuvem, com TLS)",
       );
       process.exitCode = 1;
       return;
     }
-    coreUrl = `ws://${found.host}:${found.wsPort}`;
+    coreUrl = `ws://${found.host}:${found.port}`;
     console.log(`[agent-windows] Core encontrado em ${coreUrl}`);
   }
 

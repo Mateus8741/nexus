@@ -9,8 +9,7 @@ import {
 } from "@nexus/agent-protocol";
 
 export interface DiscoveryResponderOptions {
-  readonly wsPort: number;
-  readonly httpPort: number;
+  readonly port: number;
   readonly discoveryPort?: number;
 }
 
@@ -49,8 +48,7 @@ export class DiscoveryResponder {
         type: "nexus-here",
         protocolVersion: AGENT_PROTOCOL_VERSION,
         hostname: os.hostname(),
-        wsPort: this.options.wsPort,
-        httpPort: this.options.httpPort,
+        port: this.options.port,
       };
       this.socket.send(JSON.stringify(response), rinfo.port, rinfo.address);
     });

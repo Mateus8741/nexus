@@ -8,4 +8,6 @@ Processo Node.js de longa duração que carrega e executa os plugins do Nexus (`
 bun run --filter @nexus/plugin-host dev
 ```
 
-Sobe um servidor WebSocket em `ws://localhost:4600` (configurável via `NEXUS_AGENT_GATEWAY_PORT`) aguardando conexões de Agents (ex.: `apps/agent-windows`). Sem autenticação nesta etapa — ver ARCHITECTURE.md.
+Sobe um único servidor em `http://localhost:4700` (configurável via `PORT` ou `NEXUS_HTTP_PORT`) servindo, na MESMA porta: a API HTTP somente-leitura do Dashboard (`/health`, `/devices`, `/events`, `/plugins`, `/providers`) e o WebSocket que aguarda conexões de Agents (ex.: `apps/agent-windows`), via upgrade HTTP→WebSocket anexado ao mesmo `http.Server` (ver `WebSocketAgentGateway` em `@nexus/infrastructure`). Uma porta só, de propósito — necessário para caber atrás de um reverse proxy por domínio único (ex.: Coolify/Traefik — ver ARCHITECTURE.md seção 16). Sem autenticação nesta etapa — ver ARCHITECTURE.md.
+
+Deploy em produção via Docker: ver `Dockerfile` neste diretório e ARCHITECTURE.md seção 16 (build context deve ser a raiz do monorepo).

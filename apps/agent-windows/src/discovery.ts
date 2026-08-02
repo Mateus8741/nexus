@@ -9,8 +9,7 @@ import {
 
 export interface DiscoveredCore {
   readonly host: string;
-  readonly wsPort: number;
-  readonly httpPort: number;
+  readonly port: number;
 }
 
 export interface DiscoverCoreOptions {
@@ -62,7 +61,7 @@ export function discoverCore(
         return; // pacote malformado na rede — ignorado, não derruba a busca
       }
       if (!isDiscoveryResponseMessage(parsed)) return;
-      finish({ host: rinfo.address, wsPort: parsed.wsPort, httpPort: parsed.httpPort });
+      finish({ host: rinfo.address, port: parsed.port });
     });
 
     socket.bind(() => {

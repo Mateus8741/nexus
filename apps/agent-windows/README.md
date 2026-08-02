@@ -22,10 +22,16 @@ Se `NEXUS_CORE_URL` não for definido, o Agent pergunta sozinho "onde está o Co
 Se ninguém responder em 3 segundos (Core desligado, firewall bloqueando UDP broadcast, ou máquinas em sub-redes diferentes que o roteador não repassa broadcast entre si), o Agent desiste e imprime instruções para definir `NEXUS_CORE_URL` manualmente:
 
 ```cmd
-set NEXUS_CORE_URL=ws://192.168.1.10:4600
+set NEXUS_CORE_URL=ws://192.168.1.10:4700
 ```
 
 A descoberta automática é sempre tentada primeiro; `NEXUS_CORE_URL` manual sempre tem prioridade quando definida (útil se broadcast estiver bloqueado ou Core/Agent estiverem em redes diferentes via VPN, por exemplo).
+
+**Se o Core estiver hospedado na nuvem** (ex.: Coolify — ver ARCHITECTURE.md seção 16) em vez de rodar na sua rede local, a descoberta automática NUNCA vai encontrar nada (broadcast UDP não atravessa a internet) — isso é esperado, não um bug. Configure sempre manualmente, usando `wss://` (WebSocket com TLS) em vez de `ws://`:
+
+```cmd
+set NEXUS_CORE_URL=wss://core.seudominio.com
+```
 
 O id do dispositivo (`agentId`) é gerado uma vez e persistido em `~/.nexus/agent-id` (no Windows, `%USERPROFILE%\.nexus\agent-id`) — reinícios do processo continuam sendo reconhecidos como o mesmo dispositivo pelo Core.
 
@@ -49,12 +55,18 @@ nexus-agent-windows.exe
 Sem precisar definir `NEXUS_CORE_URL` — o Agent encontra o Core sozinho na rede local (ver "Descoberta automática do Core" acima). Só defina `NEXUS_CORE_URL` manualmente se a descoberta automática falhar:
 
 ```cmd
-set NEXUS_CORE_URL=ws://<ip-do-core>:4600
+set NEXUS_CORE_URL=ws://<ip-do-core>:4700
 set NEXUS_DEVICE_NAME=PC-da-Sala
 nexus-agent-windows.exe
 ```
 
-(ou, no PowerShell: `$env:NEXUS_CORE_URL="ws://<ip-do-core>:4600"; .\nexus-agent-windows.exe`)
+(ou, no PowerShell: `$env:NEXUS_CORE_URL="ws://<ip-do-core>:4700"; .\nexus-agent-windows.exe`)
+
+Se o Core estiver na nuvem (Coolify), use `wss://` + o domínio, em vez de `ws://` + IP:
+
+```
+$env:NEXUS_CORE_URL="wss://core.seudominio.com"; .\nexus-agent-windows.exe
+```
 
 `dist/` é ignorado pelo `.gitignore` e pelo Biome — o executável é sempre gerado sob demanda a partir do código-fonte, nunca é a fonte da verdade. Rode o `package:windows` de novo sempre que `src/` ou `@nexus/agent-protocol` mudarem.
 
