@@ -1,0 +1,10 @@
+{
+  "extends": "@nexus/typescript-config/library.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "rootDir": "src",
+    "outDir": "dist",
+    "resolveJsonModule": true
+  },
+  "include": ["src", "plugin.manifest.json"]
+}

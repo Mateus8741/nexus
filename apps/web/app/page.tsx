@@ -3,55 +3,73 @@ import { Activity, Boxes, Cpu, Puzzle } from "lucide-react";
 
 import { ActivityChart } from "@/components/dashboard/activity-chart";
 import { DeviceTable } from "@/components/dashboard/device-table";
-import { EnvironmentOverview } from "@/components/dashboard/environment-overview";
 import { EventFeed } from "@/components/dashboard/event-feed";
+import { ProviderOverview } from "@/components/dashboard/provider-overview";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { mockActivitySeries } from "@/lib/mocks/activity-series";
-import { mockDevices } from "@/lib/mocks/devices";
-import { mockEnvironments } from "@/lib/mocks/environments";
-import { mockEvents } from "@/lib/mocks/events";
+import {
+  fetchDevices,
+  fetchEvents,
+  fetchPlugins,
+  fetchProviders,
+  type ProviderSummaryDto,
+} from "@/lib/nexus-client";
 
-function environmentName(device: Device): string {
-  return (
-    mockEnvironments.find((environment) => environment.id === device.spaceId)?.name ??
-    "Sem ambiente"
-  );
+function providerNameFactory(providers: ProviderSummaryDto[]) {
+  return (device: Device): string =>
+    providers.find((provider) => provider.id === device.providerId)?.name ?? "Sem integração";
 }
 
-function deviceName(deviceId: string): string {
-  return mockDevices.find((device) => device.id === deviceId)?.name ?? deviceId;
+function deviceNameFactory(devices: Device[]) {
+  return (deviceId: string): string =>
+    devices.find((device) => device.id === deviceId)?.name ?? deviceId;
 }
 
 /**
- * Dashboard — só para validar a interface visual. Todos os dados vêm de
- * apps/web/lib/mocks/*; nenhuma API real está conectada e nenhuma lógica de
- * negócio roda aqui (a página só formata e agrupa os mocks para exibição).
+ * Dashboard — agora consumindo dados reais de apps/plugin-host (devices,
+ * events, plugins, providers). Único mock que sobra é o gráfico de
+ * atividade (mockActivitySeries): construir um pipeline de métricas
+ * históricas de verdade é escopo futuro, não desta etapa.
+ *
+ * Server Component assíncrono: o App Router do Next.js suporta isso
+ * nativamente, sem config extra. Se o plugin-host não estiver rodando,
+ * lib/nexus-client.ts já devolve arrays vazios (nunca lança) — por isso a
+ * página nunca quebra, só mostra "nenhum dado ainda".
  */
-export default function Home() {
-  const onlineDevices = mockDevices.filter((device) => device.state.status === "online").length;
+export default async function Home() {
+  const [devices, events, plugins, providers] = await Promise.all([
+    fetchDevices(),
+    fetchEvents(),
+    fetchPlugins(),
+    fetchProviders(),
+  ]);
+
+  const onlineDevices = devices.filter((device) => device.state.status === "online").length;
+  const providerName = providerNameFactory(providers);
+  const deviceName = deviceNameFactory(devices);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Visão geral com dados mockados, só para validar a interface — nenhuma API real está
-          conectada ainda.
+          Visão geral com dados reais do plugin-host — exceto o gráfico de atividade, que continua
+          mockado.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Dispositivos online"
-          value={`${onlineDevices}/${mockDevices.length}`}
+          value={`${onlineDevices}/${devices.length}`}
           icon={Cpu}
-          hint="dados mockados"
+          hint="dados reais"
         />
         <StatCard
-          label="Ambientes"
-          value={String(mockEnvironments.length)}
+          label="Integrações"
+          value={String(providers.length)}
           icon={Boxes}
-          hint="dados mockados"
+          hint="dados reais"
         />
         <StatCard
           label="Automações ativas"
@@ -61,9 +79,9 @@ export default function Home() {
         />
         <StatCard
           label="Plugins instalados"
-          value="0"
+          value={String(plugins.length)}
           icon={Puzzle}
-          hint="nenhum plugin real ainda"
+          hint="dados reais"
         />
       </div>
 
@@ -75,17 +93,17 @@ export default function Home() {
           </div>
           <ActivityChart data={mockActivitySeries} />
         </div>
-        <EnvironmentOverview environments={mockEnvironments} devices={mockDevices} />
+        <ProviderOverview providers={providers} devices={devices} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <h2 className="mb-3 text-sm font-medium text-foreground">Dispositivos</h2>
-          <DeviceTable devices={mockDevices} environmentName={environmentName} />
+          <DeviceTable devices={devices} providerName={providerName} />
         </div>
         <div>
           <h2 className="mb-3 text-sm font-medium text-foreground">Atividade recente</h2>
-          <EventFeed events={mockEvents} deviceName={deviceName} />
+          <EventFeed events={events} deviceName={deviceName} />
         </div>
       </div>
     </div>

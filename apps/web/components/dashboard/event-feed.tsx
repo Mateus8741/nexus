@@ -46,6 +46,14 @@ interface EventFeedProps {
 }
 
 export function EventFeed({ events, deviceName }: EventFeedProps) {
+  if (events.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-4">
+        <p className="text-sm text-muted-foreground">Nenhum evento registrado ainda.</p>
+      </div>
+    );
+  }
+
   return (
     <ul className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
       {events.map((event) => {

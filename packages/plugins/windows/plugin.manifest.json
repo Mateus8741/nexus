@@ -1,0 +1,11 @@
+{
+  "id": "nexus.windows",
+  "name": "Windows",
+  "version": "0.1.0",
+  "description": "Descobre e gerencia computadores Windows através de um Agent remoto (apps/agent-windows), conectado via WebSocket.",
+  "author": "Nexus",
+  "capabilities": ["device-adapter"],
+  "engines": {
+    "nexus": "^0.1.0"
+  }
+}

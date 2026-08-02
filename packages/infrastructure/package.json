@@ -13,10 +13,14 @@
   },
   "dependencies": {
     "@nexus/application": "workspace:*",
-    "@nexus/domain": "workspace:*"
+    "@nexus/domain": "workspace:*",
+    "@nexus/plugins-sdk": "workspace:*",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@nexus/typescript-config": "workspace:*",
+    "@types/node": "^20",
+    "@types/ws": "^8.5.0",
     "typescript": "^5"
   }
 }

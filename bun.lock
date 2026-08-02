@@ -11,6 +11,21 @@
         "typescript": "^5",
       },
     },
+    "apps/agent-windows": {
+      "name": "@nexus/agent-windows",
+      "version": "0.1.0",
+      "dependencies": {
+        "@nexus/agent-protocol": "workspace:*",
+        "ws": "^8.18.0",
+      },
+      "devDependencies": {
+        "@nexus/typescript-config": "workspace:*",
+        "@types/node": "^20",
+        "@types/ws": "^8.5.0",
+        "tsx": "^4.19.0",
+        "typescript": "^5",
+      },
+    },
     "apps/plugin-host": {
       "name": "@nexus/plugin-host",
       "version": "0.1.0",
@@ -18,6 +33,7 @@
         "@nexus/application": "workspace:*",
         "@nexus/domain": "workspace:*",
         "@nexus/infrastructure": "workspace:*",
+        "@nexus/plugin-windows": "workspace:*",
         "@nexus/plugins-sdk": "workspace:*",
       },
       "devDependencies": {
@@ -53,6 +69,14 @@
         "typescript": "^5",
       },
     },
+    "packages/agent-protocol": {
+      "name": "@nexus/agent-protocol",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@nexus/typescript-config": "workspace:*",
+        "typescript": "^5",
+      },
+    },
     "packages/application": {
       "name": "@nexus/application",
       "version": "0.0.0",
@@ -78,9 +102,13 @@
       "dependencies": {
         "@nexus/application": "workspace:*",
         "@nexus/domain": "workspace:*",
+        "@nexus/plugins-sdk": "workspace:*",
+        "ws": "^8.18.0",
       },
       "devDependencies": {
         "@nexus/typescript-config": "workspace:*",
+        "@types/node": "^20",
+        "@types/ws": "^8.5.0",
         "typescript": "^5",
       },
     },
@@ -89,6 +117,20 @@
       "version": "0.0.0",
       "devDependencies": {
         "@nexus/typescript-config": "workspace:*",
+        "typescript": "^5",
+      },
+    },
+    "packages/plugins/windows": {
+      "name": "@nexus/plugin-windows",
+      "version": "0.1.0",
+      "dependencies": {
+        "@nexus/agent-protocol": "workspace:*",
+        "@nexus/domain": "workspace:*",
+        "@nexus/plugins-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@nexus/typescript-config": "workspace:*",
+        "@types/node": "^20",
         "typescript": "^5",
       },
     },
@@ -353,6 +395,10 @@
 
     "@next/swc-win32-x64-msvc": ["@next/swc-win32-x64-msvc@16.2.12", "", { "os": "win32", "cpu": "x64" }, "sha512-F6fakeHuFTLOPt0bslQJdf+xtT+WIP9DVn/m4y1w1mRnVPyh3D/cNvzlRkxM444xfm+IvvYNSOrKiA2CDJ0Uxw=="],
 
+    "@nexus/agent-protocol": ["@nexus/agent-protocol@workspace:packages/agent-protocol"],
+
+    "@nexus/agent-windows": ["@nexus/agent-windows@workspace:apps/agent-windows"],
+
     "@nexus/application": ["@nexus/application@workspace:packages/application"],
 
     "@nexus/domain": ["@nexus/domain@workspace:packages/domain"],
@@ -360,6 +406,8 @@
     "@nexus/infrastructure": ["@nexus/infrastructure@workspace:packages/infrastructure"],
 
     "@nexus/plugin-host": ["@nexus/plugin-host@workspace:apps/plugin-host"],
+
+    "@nexus/plugin-windows": ["@nexus/plugin-windows@workspace:packages/plugins/windows"],
 
     "@nexus/plugins-sdk": ["@nexus/plugins-sdk@workspace:packages/plugins-sdk"],
 
@@ -462,6 +510,8 @@
     "@types/react-dom": ["@types/react-dom@19.2.4", "", { "peerDependencies": { "@types/react": "^19.2.0" } }, "sha512-Bsc+QHgp+P/F02XDzNCY9jnZNCUuLki36KT7VKrTXXLdHf+vHMNZnW1rVu5DNW/rCK+fya3DATySbLM4yhtKUw=="],
 
     "@types/use-sync-external-store": ["@types/use-sync-external-store@0.0.6", "", {}, "sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg=="],
+
+    "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
     "@typescript-eslint/eslint-plugin": ["@typescript-eslint/eslint-plugin@8.65.0", "", { "dependencies": { "@eslint-community/regexpp": "^4.12.2", "@typescript-eslint/scope-manager": "8.65.0", "@typescript-eslint/type-utils": "8.65.0", "@typescript-eslint/utils": "8.65.0", "@typescript-eslint/visitor-keys": "8.65.0", "ignore": "^7.0.5", "natural-compare": "^1.4.0", "ts-api-utils": "^2.5.0" }, "peerDependencies": { "@typescript-eslint/parser": "^8.65.0", "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0", "typescript": ">=4.8.4 <6.1.0" } }, "sha512-IEgob78X12rHpUmtcwFsXhZdVGJtwTVP8FiCLZkR6GlYVrl2PcuB+KhCE5BlVC/eQpQnu8WXRtkHZuPar+gCRA=="],
 
@@ -1148,6 +1198,8 @@
     "which-typed-array": ["which-typed-array@1.1.22", "", { "dependencies": { "available-typed-arrays": "^1.0.7", "call-bind": "^1.0.9", "call-bound": "^1.0.4", "for-each": "^0.3.5", "get-proto": "^1.0.1", "gopd": "^1.2.0", "has-tostringtag": "^1.0.2" } }, "sha512-fvO4ExWMFsqyhG3AiPAObMuY1lxaqgYcxbc49CNdWDDECOJNgQyvsOWVwbZc+qf3rzRtxojBK+CMEv0Ld5CYpw=="],
 
     "word-wrap": ["word-wrap@1.2.5", "", {}, "sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA=="],
+
+    "ws": ["ws@8.21.1", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw=="],
 
     "yallist": ["yallist@3.1.1", "", {}, "sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g=="],
 

@@ -13,6 +13,7 @@
     "@nexus/application": "workspace:*",
     "@nexus/domain": "workspace:*",
     "@nexus/infrastructure": "workspace:*",
+    "@nexus/plugin-windows": "workspace:*",
     "@nexus/plugins-sdk": "workspace:*"
   },
   "devDependencies": {

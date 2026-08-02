@@ -1,3 +1,4 @@
+export type { AgentConnection, AgentGateway } from "./agent-gateway";
 export type { PluginContext, PluginLogger } from "./context";
 export type { PluginCapability, PluginManifest } from "./manifest";
 export { assertPluginManifest, isPluginManifest } from "./manifest";

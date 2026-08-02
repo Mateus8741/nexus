@@ -109,7 +109,39 @@ Primeira página real de `apps/web`, substituindo o placeholder. Objetivo explí
 - **Honestidade dos números**: dispositivos e ambientes mostram contagens mockadas reais (porque o sistema de Dispositivos existe de verdade); automações e plugins mostram "0" com uma dica explicando que esses sistemas ainda não têm implementação — para não sugerir que algo funciona quando não funciona.
 - **`recharts`** foi adicionado como dependência real de `apps/web` (não é um componente shadcn) para o gráfico de atividade, estilizado com as variáveis de tema de `@nexus/ui` (`var(--color-primary)`, etc.) em vez de cores fixas.
 
-## 11. O que foi validado
+## 11. Primeiro provider real: Windows (`@nexus/plugin-windows` + `apps/agent-windows`)
+
+Objetivo explícito: não implementar todas as funcionalidades do Windows, e sim validar a arquitetura que qualquer plugin futuro (Docker, Home Assistant, Tuya, Linux, macOS) vai reaproveitar. Por isso a peça mais importante desta etapa não é o Windows em si — é a cadeia de abstrações em volta dele.
+
+**Cadeia de dependência** (setas = "conhece"):
+
+```
+apps/plugin-host (composition root)
+   → @nexus/plugins-sdk    (PluginRegistry, PluginLoader, AgentGateway — abstrações)
+   → @nexus/application    (AttachDeviceProviderUseCase — orquestra Provider ↔ Registry)
+   → @nexus/domain         (Device, DeviceProvider, DeviceRegistry, DeviceEvent — abstrações)
+   → @nexus/infrastructure (InMemoryDeviceRegistry, WebSocketAgentGateway — implementações concretas)
+   → @nexus/plugin-windows (implementa Plugin + DeviceProvider — só aqui existe "Windows")
+                                    ↕ WebSocket (@nexus/agent-protocol)
+                              apps/agent-windows (processo separado, roda na máquina Windows)
+```
+
+`apps/plugin-host` é o único arquivo do monorepo autorizado a conhecer, ao mesmo tempo, uma abstração e a implementação concreta dela — e o único que importa `@nexus/plugin-windows` diretamente. Nenhuma outra peça do sistema sabe que existe Windows.
+
+- **`@nexus/agent-protocol`** (pacote novo, zero deps): o "idioma" comum entre o Core e um Agent remoto — união discriminada `AgentMessage` (`register`, `heartbeat`, `metrics`, `action-result`) e `CoreMessage` (`action-command`), com type guards (`isAgentMessage`/`isCoreMessage`), no mesmo estilo do `isPluginManifest` que já existia. É o único pacote que `apps/agent-windows` importa do monorepo Nexus — o resto (o formato exato das mensagens) é o suficiente para, no futuro, reescrever um agent em outra linguagem sem tocar em mais nada.
+- **`AgentGateway`/`AgentConnection`** (novo em `@nexus/plugins-sdk/contracts`): porta agnóstica de transporte — "aceitar conexões de agents remotos" sem dizer que é WebSocket. `WebSocketAgentGateway` (em `@nexus/infrastructure`, usando a lib `ws`) é a única implementação concreta; o host injeta essa instância no plugin, o plugin nunca cria a sua própria.
+- **`InMemoryDeviceRegistry`** (novo em `@nexus/infrastructure`): primeira implementação concreta de `DeviceRegistry` (até aqui só a interface existia). A interface ganhou um método novo, `notify(event)`, para completar o par com `subscribe()` — `register`/`unregister`/`updateState` só mutam estado; `notify` é quem publica um evento para os assinantes, chamado por quem estiver sincronizando o registry com um provider (nunca internamente), preservando a fidelidade do evento original.
+- **`AttachDeviceProviderUseCase`** (novo em `@nexus/application`, primeiro caso de uso real do pacote): conecta **qualquer** `DeviceProvider` a um `DeviceRegistry` — registra o que o provider já conhece e mantém sincronizado com os eventos dele depois. Não sabe nada sobre Windows; processa os eventos em fila (um de cada vez) para garantir que `notify()` publique na mesma ordem em que o provider emitiu, mesmo quando um evento exige uma chamada assíncrona (`device.connected`) e o seguinte não (`device.state-changed`) — um bug real que o smoke test pegou antes da correção.
+- **`WindowsDeviceProvider`** (novo em `packages/plugins/windows`, implementa `DeviceProvider`): recebe um `AgentGateway` e nunca fala com Windows diretamente — só interpreta mensagens de `@nexus/agent-protocol`. `register` cria o `Device` (usa o `agentId`, persistido pelo Agent, como `Device.id` — é o que faz reconexões serem reconhecidas como o mesmo dispositivo); `heartbeat`/`metrics` resetam um timer de 30s (se ele estourar, ou se o socket fechar, o dispositivo vira `offline` — nunca é removido do registry); `executeAction` valida o tipo da ação contra as 4 suportadas, gera um `requestId`, e correlaciona a resposta assíncrona (`action-result`) com timeout de 15s.
+- **`apps/agent-windows`** (app novo): processo standalone, separado do Core de propósito. Só depende de `@nexus/agent-protocol` e `ws`. Persiste um `agentId` (UUID) em `~/.nexus/agent-id` para sobreviver a reinícios. Métricas (CPU/RAM/disco/uptime) via `node:os`/`node:fs`, com CPU estimada por amostragem (duas leituras de `os.cpus()`). As 4 ações (`shutdown`/`restart`/`lock`/`executeCommand`) passam por uma interface `SystemActions` injetável — a implementação real (`WindowsSystemActions`) só roda quando `process.platform === "win32"`; em qualquer outro SO (incluindo este ambiente de desenvolvimento) usa `SimulatedSystemActions`, que nunca executa nada de verdade. Isso permitiu validar o fluxo inteiro (registro → heartbeat → métricas → ação → desconexão) neste sandbox Linux sem risco de desligar a máquina onde o Agent roda.
+
+**Ajuste ao workspace**: `packages/plugins/*` foi adicionado ao `workspaces` do `package.json` raiz — o glob `packages/*` não alcançava um pacote dois níveis abaixo (`packages/plugins/windows`).
+
+**Pendência de segurança, deliberada e registrada aqui**: o WebSocket do `WebSocketAgentGateway` não tem nenhuma autenticação nesta etapa — qualquer processo que conseguir abrir a conexão é tratado como um Agent válido. Isso combina com o escopo pedido ("validar a arquitetura"), mas não deve ser exposto fora de `localhost`/rede confiável antes de um mecanismo de autenticação ser implementado.
+
+**Reaproveitamento por plugins futuros**: Docker, Home Assistant e Tuya reaproveitam a cadeia `DeviceProvider` → `AttachDeviceProviderUseCase` → `DeviceRegistry` sem alteração nenhuma — mas, como eles falam direto com uma API/daemon já existente, provavelmente não precisam de `AgentGateway`/`@nexus/agent-protocol` (isso é específico do "padrão Agent"). Linux e macOS, por outro lado, reaproveitam a arquitetura inteira, incluindo o Agent — um `apps/agent-linux`/`apps/agent-macos` seria só uma nova implementação de `SystemActions`/coleta de métricas falando o mesmo `@nexus/agent-protocol`.
+
+## 12. O que foi validado
 
 Rodado neste ambiente antes de cada entrega: `bun install`, `bun run typecheck` (tsc --noEmit em todos os pacotes), `bun run lint` (ESLint em `apps/web`) e `bun run check` (Biome) — todos passando sem erro.
 
@@ -119,13 +151,36 @@ Para o sistema de dispositivos (sem runtime para testar, já que é só tipos): 
 
 Para o Dashboard: `next build` (Turbopack) chegou a compilar toda a página, os componentes novos e o `recharts` sem nenhum erro — parou só na etapa de otimização das fontes `Geist`/`Geist Mono` via `next/font/google`, que exige buscar `fonts.googleapis.com` em build time (indisponível neste ambiente de desenvolvimento; funciona normalmente com acesso à internet).
 
+Para o provider Windows: um script descartável subiu, num único processo, `WebSocketAgentGateway` + `WindowsDeviceProvider` + `AttachDeviceProviderUseCase` + `InMemoryDeviceRegistry` (lado Core) conversando via WebSocket real com um `WindowsAgent` de verdade (lado Agent, com `SimulatedSystemActions`, já que este ambiente não é Windows). Validou, na ordem: registro automático criando o `Device` no registry como `online`; a primeira leitura de métricas populando `state.attributes`; `executeAction("executeCommand")` correlacionando a resposta pelo `requestId` e retornando sucesso; uma ação não suportada (`"screenshot"`) sendo rejeitada sem nunca chegar a ser enviada ao Agent; e, ao parar o Agent, o dispositivo virando `offline` no registry (nunca removido). Foi este script que expôs o bug de ordenação de eventos corrigido em `AttachDeviceProviderUseCase` (ver seção 11). Também confirmado via `bun run --filter @nexus/plugin-host dev` + `bun run --filter @nexus/agent-windows dev` como dois processos de verdade, não só em memória — script apagado depois.
+
+## 13. Dashboard com dados reais (`apps/plugin-host` API HTTP + `apps/web`)
+
+Objetivo: o Dashboard parar de ser 100% mockado, sem inventar sistemas que não existem (Ambiente/Espaço continua sem entidade própria — ver seção 9).
+
+**Por que HTTP e não import direto**: `apps/plugin-host` e `apps/web` são processos Node separados (o próprio `apps/plugin-host` já existe assim de propósito, por precisar manter conexões vivas — ver seção 3/`apps/plugin-host/README.md`). O Dashboard não pode importar `InMemoryDeviceRegistry`/`PluginRegistry` diretamente; ele busca os dados via `fetch` de dentro de um Server Component, Node→Node, sem passar pelo browser — por isso a API não tem (nem precisa de) CORS.
+
+- **DTOs compartilhados** (`@nexus/application/src/dto/*`, novo): `DeviceDto`/`DeviceEventDto`/`DeviceStateDto` são as versões JSON-safe de `Device`/`DeviceEvent`/`DeviceState` (`Date` vira `string` ISO — `previousState` ausente vira `null`, não `undefined`, porque `JSON.stringify` descarta chaves `undefined`). Cada um tem `to*Dto`/`from*Dto`: `apps/plugin-host` serializa com `to*Dto`, `apps/web` desserializa com `from*Dto` de volta para os MESMOS tipos de `@nexus/domain` que os componentes do Dashboard já esperavam — nenhum componente precisou mudar sua assinatura de props por causa disso.
+- **API HTTP do Core** (`apps/plugin-host/src/http/`, novo): servidor `node:http` puro (sem Express, mesma filosofia hand-rolled do `WebSocketAgentGateway`), porta via `NEXUS_HTTP_PORT` (padrão `4700`, ao lado do `NEXUS_AGENT_GATEWAY_PORT` do WebSocket). Rotas: `GET /devices`, `GET /events?limit=N`, `GET /plugins`, `GET /providers`, `GET /health`. `EventLog` (novo, também em `apps/plugin-host/src/http/`) é um buffer circular em memória (200 eventos) assinado no `deviceRegistry.subscribe()` — existe porque o `DeviceRegistry` só guarda o snapshot vivo de cada `Device`, não histórico; sem isso não haveria "atividade recente" real para mostrar.
+- **Cliente no Dashboard** (`apps/web/lib/nexus-client.ts`, novo): `fetchDevices`/`fetchEvents`/`fetchPlugins`/`fetchProviders`, todas com `cache: "no-store"` (dado operacional, sempre fresco) e todas **tolerantes a falha** — se `apps/plugin-host` não estiver rodando, cada uma faz `console.warn` e devolve `[]`, nunca derruba a página. `app/page.tsx` virou um Server Component assíncrono buscando as quatro fontes em paralelo.
+- **"Ambientes" virou "Integrações"**: como `@nexus/domain` ainda não tem entidade Espaço/Ambiente, o agrupamento por ambiente (que era só mock) foi substituído por um agrupamento real por `DeviceProvider` (`provider-overview.tsx`, renomeado de `environment-overview.tsx`) — hoje só mostra "Windows", mas cresce automaticamente quando houver mais providers, sem mudar o componente.
+- **Honestidade mantida e atualizada**: "Dispositivos online" e "Integrações" agora mostram dados reais; "Plugins instalados" também virou real (`1`, porque `@nexus/plugin-windows` roda de verdade) — só "Automações ativas" continua `"0"`, porque esse sistema genuinely não existe ainda. O gráfico de atividade (24h) continua mockado, deliberadamente — construir agregação histórica de métricas é um passo à parte, não incluído aqui — e o texto ao lado do gráfico deixa isso explícito agora que o resto da página é real.
+- **Empty state**: com zero dispositivos conectados (Core fora do ar, ou nenhum Agent conectado ainda), a tabela e o feed mostram uma mensagem mínima em vez de uma área em branco confusa.
+
+**Validado end-to-end neste ambiente**: subi `apps/plugin-host`, `apps/agent-windows` (simulado) e `apps/web` juntos (três processos reais, portas de teste dedicadas) — confirmei via `curl` que `/devices`, `/providers`, `/plugins` e `/events` respondem com o dispositivo simulado real, e então confirmei que o HTML retornado por `apps/web` contém o nome real do dispositivo (`"PC-Teste"`), o status `online` vindo da API, e a contagem real de plugins — não os dados mockados antigos.
+
+**Consequência prática ao rodar `bun run dev` na raiz**: como `apps/agent-windows` já tem um script `dev` (necessário para o desenvolvimento normal dele), o `turbo run dev` da raiz sobe `apps/web` + `apps/plugin-host` + `apps/agent-windows` juntos por padrão. Isso é intencional nesta fase: rodar `bun run dev` já deixa o Dashboard com pelo menos um dispositivo real (simulado, já que este ambiente não é Windows) para mostrar, sem passos manuais extras.
+
 ## Próximos passos (não feitos agora, de propósito)
 
-- Implementação concreta de `DeviceRegistry` (provavelmente em `@nexus/infrastructure`, já que agregar múltiplos providers é decisão de infraestrutura).
-- Primeiro `DeviceProvider` real (ex.: Home Assistant) — ainda sem Windows/Tuya/Docker, que seguem fora de escopo.
-- Entidade Espaço/Ambiente em `@nexus/domain` (hoje `Device.spaceId` é só `string`, e o Dashboard usa um lookup mockado em paralelo).
-- Primeiro caso de uso real em `@nexus/application` (ex.: `ExecuteDeviceAction`, orquestrando `DeviceRegistry` + `DeviceProvider`).
-- Ligar o Dashboard a dados reais (trocar `apps/web/lib/mocks/*` por chamadas à camada de aplicação) — explicitamente fora de escopo por enquanto.
-- `apps/plugin-host` implementando um `PluginSource` real (descoberta em `packages/plugins/*`) e usando `PluginRegistry`/`PluginLoader`.
-- Primeiro plugin real em `packages/plugins/`.
+- **Autenticação no `AgentGateway`**: hoje qualquer processo que abrir o WebSocket é tratado como Agent válido — pendência de segurança registrada na seção 11, antes de qualquer exposição fora de `localhost`. A API HTTP da seção 13 também não tem autenticação (mesma lógica: só pensada para uso local/interno por enquanto).
+- Funcionalidades do Windows explicitamente adiadas: screenshot, explorer, terminal remoto, transferência de arquivos, clipboard, processos, serviços, Wake On LAN, Remote Desktop, instalação de softwares.
+- Métricas mais detalhadas: disco por drive (`C:\`, `D:\`, ...) em vez de um único percentual agregado; CPU por núcleo.
+- Persistência real do `DeviceRegistry` (hoje `InMemoryDeviceRegistry` esquece tudo ao reiniciar `apps/plugin-host`, e o `EventLog` da seção 13 também é só em memória).
+- `apps/plugin-host` implementando um `PluginSource` real (descoberta em disco de `packages/plugins/*`) em vez do array embutido usado nesta etapa.
+- Próximo `DeviceProvider` (Docker, Home Assistant, Tuya, Linux ou macOS) reaproveitando `AttachDeviceProviderUseCase` sem alteração — Linux/macOS reaproveitam também `@nexus/agent-protocol`/`AgentGateway`.
+- Entidade Espaço/Ambiente em `@nexus/domain` — quando existir, "Integrações" (seção 13) e um futuro agrupamento por Ambiente podem conviver, cada um mostrando uma dimensão diferente dos mesmos dispositivos.
+- UI para disparar ações (`shutdown`/`restart`/`lock`/`executeCommand`) a partir do Dashboard — a API HTTP desta etapa só tem rotas de leitura (`GET`), de propósito, para manter o escopo focado em "mostrar dados reais" antes de "controlar dispositivos pela UI".
+- Atualização ao vivo do Dashboard (WebSocket/SSE do browser para o Core) — hoje os dados só atualizam quando a página é recarregada, já que o fetch usa `cache: "no-store"` mas é feito uma vez por request do servidor.
+- Agregação histórica real para o gráfico de atividade (24h) — hoje continua mockado, mesmo com o resto do Dashboard já real.
+- Um bundler (ex.: `tsup`/`esbuild`) para os scripts `build`/`start` de `apps/plugin-host` e `apps/agent-windows`: hoje esses dois rodam via `tsx` em desenvolvimento (que resolve imports sem extensão entre pacotes do workspace sem problema), mas o `tsc` puro usado no script `build` emitiria imports relativos sem extensão que o Node ESM não resolve sozinho em produção — não testado nesta etapa, já que a validação foi via `tsx`/`bun run dev`.
 - Páginas reais em `apps/web` além do Dashboard.

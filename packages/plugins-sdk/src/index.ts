@@ -18,8 +18,7 @@
  * @nexus/application ou qualquer framework junto.
  *
  * Consumido por apps/plugin-host (que descobre e executa plugins) e por
- * cada pacote em packages/plugins/* — nenhum plugin foi implementado ainda,
- * só o SDK que eles vão usar.
+ * cada pacote em packages/plugins/* — o primeiro sendo @nexus/plugin-windows.
  */
 
 export * from "./contracts";

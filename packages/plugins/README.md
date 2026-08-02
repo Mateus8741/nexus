@@ -1,8 +1,14 @@
 # packages/plugins
 
-Convenção para plugins/integrações de primeira parte (ex.: MQTT, Docker, Proxmox, TrueNAS, Home Assistant).
+Convenção para plugins/integrações de primeira parte (ex.: Windows, MQTT, Docker, Proxmox, TrueNAS, Home Assistant).
 
-Cada plugin é o seu próprio pacote do workspace, nomeado `@nexus/plugin-<nome>` (ex.: `@nexus/plugin-mqtt`, `@nexus/plugin-docker`, `@nexus/plugin-home-assistant`), e deve depender apenas de `@nexus/plugins-sdk` — nunca de `@nexus/infrastructure` ou de outro plugin diretamente.
+Cada plugin é o seu próprio pacote do workspace, nomeado `@nexus/plugin-<nome>` (ex.: `@nexus/plugin-windows`, `@nexus/plugin-docker`, `@nexus/plugin-home-assistant`). Dependências permitidas:
+
+- `@nexus/plugins-sdk` — sempre. É o "kernel API" (Plugin, PluginManifest, PluginContext, AgentGateway).
+- `@nexus/domain` — quando o plugin expõe um `DeviceProvider` (a interface e os tipos `Device`/`DeviceState`/`DeviceEvent`/`DeviceAction` vêm de lá).
+- `@nexus/agent-protocol` — só para plugins no "padrão Agent" (que aceitam conexões de um processo remoto via `AgentGateway`, ex.: Windows). Plugins que falam direto com uma API/daemon já existente (Docker, Home Assistant) não precisam disso.
+
+Nunca: `@nexus/infrastructure`, `@nexus/application`, nem outro pacote de `packages/plugins/*` diretamente.
 
 Estrutura esperada de cada plugin:
 
@@ -10,9 +16,10 @@ Estrutura esperada de cada plugin:
 packages/plugins/<nome>/
 ├── package.json
 ├── tsconfig.json
-├── plugin.manifest.json   # metadados: id, versão, capacidades declaradas
+├── plugin.manifest.json     # metadados: id, versão, capacidades declaradas
 └── src/
-    └── index.ts           # implementa os contratos de @nexus/plugins-sdk
+    ├── index.ts             # valida o manifesto e exporta uma factory (ex.: createWindowsPlugin)
+    └── <nome>-device-provider.ts   # implementa DeviceProvider, se aplicável
 ```
 
-Nenhum plugin foi criado ainda — esta pasta existe apenas para registrar a convenção. `apps/plugin-host` é o processo que descobre, carrega e executa esses pacotes em tempo de execução.
+`packages/plugins/windows` é o primeiro plugin real e a referência para os próximos. `apps/plugin-host` é o processo (composition root) que instancia, carrega e executa esses pacotes em tempo de execução.
