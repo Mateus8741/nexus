@@ -1,22 +1,24 @@
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+
+import { getConfigPath } from "./paths";
+
+export interface PersistedCredentials {
+  readonly username: string;
+  /** Domínio NetBIOS ou "." para conta local. */
+  readonly domain?: string;
+  /**
+   * Senha protegida com DPAPI `LocalMachine` (Base64), gravada pelo
+   * install.ps1 / set-credentials.ps1. Só descriptografa nesta máquina.
+   */
+  readonly passwordProtected: string;
+}
 
 export interface PersistedConfig {
   readonly coreUrl?: string;
   readonly deviceName?: string;
-}
-
-/**
- * Mesmo caminho que `scripts/install.ps1` escreve — ver esse arquivo para o
- * outro lado desse contrato. `%LOCALAPPDATA%` é o padrão em Windows; fora
- * dele (dev/teste em Linux/macOS), cai num caminho equivalente que
- * simplesmente nunca vai existir, então a leitura falha silenciosamente e
- * o Agent segue para as próximas fontes de configuração.
- */
-function getConfigPath(): string {
-  const base = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
-  return path.join(base, "NexusAgent", "config.json");
+  readonly credentials?: PersistedCredentials;
+  /** Se true, o instalador também ligou AutoLogon do Windows com essas credenciais. */
+  readonly autoLogon?: boolean;
 }
 
 /**
@@ -49,8 +51,24 @@ export function readPersistedConfig(): PersistedConfig {
     return {
       coreUrl: typeof record.coreUrl === "string" ? record.coreUrl : undefined,
       deviceName: typeof record.deviceName === "string" ? record.deviceName : undefined,
+      autoLogon: record.autoLogon === true,
+      credentials: parseCredentials(record.credentials),
     };
   } catch {
     return {};
   }
+}
+
+function parseCredentials(value: unknown): PersistedCredentials | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.username !== "string" || record.username.length === 0) return undefined;
+  if (typeof record.passwordProtected !== "string" || record.passwordProtected.length === 0) {
+    return undefined;
+  }
+  return {
+    username: record.username,
+    domain: typeof record.domain === "string" ? record.domain : undefined,
+    passwordProtected: record.passwordProtected,
+  };
 }
