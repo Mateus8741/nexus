@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Remove o Nexus Agent instalado por install.ps1: para o processo, apaga a
   Tarefa Agendada e apaga a pasta de instalação.

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Instala o Nexus Agent para rodar sozinho, em segundo plano, sempre que
   este usuário fizer login no Windows — sem precisar abrir terminal nenhum
