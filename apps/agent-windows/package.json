@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package:windows": "bun build --compile --target=bun-windows-x64 ./src/index.ts --outfile ./dist/nexus-agent-windows.exe"
   },
   "dependencies": {
     "@nexus/agent-protocol": "workspace:*",

@@ -170,6 +170,20 @@ Objetivo: o Dashboard parar de ser 100% mockado, sem inventar sistemas que não 
 
 **Consequência prática ao rodar `bun run dev` na raiz**: como `apps/agent-windows` já tem um script `dev` (necessário para o desenvolvimento normal dele), o `turbo run dev` da raiz sobe `apps/web` + `apps/plugin-host` + `apps/agent-windows` juntos por padrão. Isso é intencional nesta fase: rodar `bun run dev` já deixa o Dashboard com pelo menos um dispositivo real (simulado, já que este ambiente não é Windows) para mostrar, sem passos manuais extras.
 
+## 14. Empacotamento do `apps/agent-windows` (executável standalone)
+
+Objetivo: alguém com um Windows real não deveria precisar instalar Bun/Node nem clonar o monorepo inteiro só para rodar o Agent.
+
+`bun build --compile` resolve isso: empacota o Agent + o runtime do Bun + todas as dependências (`@nexus/agent-protocol`, `ws`) num único executável nativo, via cross-compilation a partir de qualquer SO — usado aqui a partir deste ambiente Linux para gerar um `.exe` de Windows de verdade (confirmado via `file`: `PE32+ executable (console) x86-64, for MS Windows`).
+
+- Script: `bun run --filter @nexus/agent-windows package:windows` → gera `apps/agent-windows/dist/nexus-agent-windows.exe` (~95 MB — o tamanho vem de embutir o runtime inteiro, é esperado para esse tipo de binário).
+- `dist/` já estava no `.gitignore` e excluído do Biome desde o início do projeto (seção 1) — o executável nunca é a fonte da verdade, é sempre gerado sob demanda a partir de `src/`.
+- Configuração continua via variáveis de ambiente (`NEXUS_CORE_URL`, `NEXUS_DEVICE_NAME`), agora setadas no `cmd`/PowerShell do Windows em vez de num shell Unix — documentado em `apps/agent-windows/README.md`.
+- As flags `--windows-title`/`--windows-description`/etc. do `bun build --compile` (metadados do executável, ícone) só funcionam compilando a partir de um Windows de verdade — não deu para usar aqui; o `.exe` gerado funciona normalmente, só aparece com metadados genéricos no Explorer.
+- Fora de escopo aqui: um instalador, rodar como serviço do Windows (start automático no boot, sem janela de terminal visível) — hoje é só um executável em primeiro plano.
+
+Isso resolve, para `apps/agent-windows` especificamente, a pendência que estava registrada em "Próximos passos" sobre precisar de um bundler — `apps/plugin-host` continua rodando via `bun run dev`/`tsx` no servidor (nunca é distribuído como executável, então não tem a mesma urgência).
+
 ## Próximos passos (não feitos agora, de propósito)
 
 - **Autenticação no `AgentGateway`**: hoje qualquer processo que abrir o WebSocket é tratado como Agent válido — pendência de segurança registrada na seção 11, antes de qualquer exposição fora de `localhost`. A API HTTP da seção 13 também não tem autenticação (mesma lógica: só pensada para uso local/interno por enquanto).
@@ -182,5 +196,6 @@ Objetivo: o Dashboard parar de ser 100% mockado, sem inventar sistemas que não 
 - UI para disparar ações (`shutdown`/`restart`/`lock`/`executeCommand`) a partir do Dashboard — a API HTTP desta etapa só tem rotas de leitura (`GET`), de propósito, para manter o escopo focado em "mostrar dados reais" antes de "controlar dispositivos pela UI".
 - Atualização ao vivo do Dashboard (WebSocket/SSE do browser para o Core) — hoje os dados só atualizam quando a página é recarregada, já que o fetch usa `cache: "no-store"` mas é feito uma vez por request do servidor.
 - Agregação histórica real para o gráfico de atividade (24h) — hoje continua mockado, mesmo com o resto do Dashboard já real.
-- Um bundler (ex.: `tsup`/`esbuild`) para os scripts `build`/`start` de `apps/plugin-host` e `apps/agent-windows`: hoje esses dois rodam via `tsx` em desenvolvimento (que resolve imports sem extensão entre pacotes do workspace sem problema), mas o `tsc` puro usado no script `build` emitiria imports relativos sem extensão que o Node ESM não resolve sozinho em produção — não testado nesta etapa, já que a validação foi via `tsx`/`bun run dev`.
+- Instalador/serviço Windows para `apps/agent-windows` (start automático no boot, sem janela de terminal visível) — hoje é só o `.exe` gerado na seção 14, rodando em primeiro plano.
+- Um bundler (ex.: `tsup`/`esbuild`) especificamente para `apps/plugin-host`, caso um dia ele precise ser distribuído como executável fora do servidor onde já roda via `bun run dev`/`start` — `apps/agent-windows` já resolveu isso via `bun build --compile` (seção 14).
 - Páginas reais em `apps/web` além do Dashboard.
