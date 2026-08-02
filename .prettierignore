@@ -1,0 +1,10 @@
+# Prettier só cuida de Markdown/MDX neste projeto.
+# Todo o resto (TS, TSX, JS, JSON, CSS) é formatado pelo Biome.
+*
+!*.md
+!*.mdx
+node_modules/
+.next/
+dist/
+build/
+.turbo/

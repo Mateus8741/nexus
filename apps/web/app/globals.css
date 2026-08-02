@@ -1,0 +1,7 @@
+@import "@nexus/ui/globals.css";
+
+/*
+ * Tokens de tema, tailwind base e reset vivem em @nexus/ui (fonte única
+ * de verdade para o design system). Estilos específicos de apps/web,
+ * se necessários, entram abaixo.
+ */
