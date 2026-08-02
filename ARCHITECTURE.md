@@ -184,9 +184,22 @@ Objetivo: alguém com um Windows real não deveria precisar instalar Bun/Node ne
 
 Isso resolve, para `apps/agent-windows` especificamente, a pendência que estava registrada em "Próximos passos" sobre precisar de um bundler — `apps/plugin-host` continua rodando via `bun run dev`/`tsx` no servidor (nunca é distribuído como executável, então não tem a mesma urgência).
 
+## 15. Descoberta automática do Core na rede local (UDP broadcast)
+
+Objetivo: ninguém deveria precisar descobrir manualmente o IP da máquina que roda o Core para configurar o `.exe` numa máquina Windows nova — isso era a única fricção restante no fluxo de distribuição da seção 14.
+
+Novo protocolo de descoberta em `@nexus/agent-protocol/discovery.ts` (zero deps, igual ao resto do pacote): `DiscoveryRequestMessage`/`DiscoveryResponseMessage`, porta UDP fixa `DISCOVERY_DEFAULT_PORT = 41234` (separada das portas de WebSocket e HTTP API).
+
+- `apps/plugin-host/src/discovery/discovery-responder.ts` — `DiscoveryResponder`, novo componente do bootstrap: escuta UDP na porta 41234 em todas as interfaces (`0.0.0.0`), e para todo pacote `nexus-discover` válido responde (unicast, de volta para quem perguntou) com hostname + portas de WebSocket/HTTP. Não conhece nada sobre Windows/plugins — só "estou aqui, minhas portas são X e Y". Fechado no `shutdown()` junto com o resto.
+- `apps/agent-windows/src/discovery.ts` — `discoverCore()`: se `NEXUS_CORE_URL` não estiver definida, o Agent manda um `nexus-discover` em broadcast (`255.255.255.255:41234`) e resolve com o primeiro `nexus-here` que receber, usando o **IP de origem do pacote UDP de resposta** (garantido pelo próprio kernel/SO, nunca um valor dentro do payload) para montar `ws://<ip>:<wsPort>`. Isso é o que resolve corretamente o caso de o Core ter múltiplas interfaces de rede (Wi-Fi + Ethernet, por exemplo): o Agent automaticamente usa a interface por onde a resposta realmente chegou.
+- Timeout de 3s; se ninguém responder (Core desligado, firewall bloqueando UDP broadcast, ou sub-redes diferentes que o roteador não repassa broadcast entre si), o Agent imprime instruções para definir `NEXUS_CORE_URL` manualmente e encerra — a configuração manual sempre continua funcionando como fallback.
+- Sem autenticação nesta etapa, mesma postura do resto do protocolo — qualquer processo na rede local pode perguntar "onde está o Core?" e receber a resposta. Ver seção "Próximos passos".
+- Validado via smoke test isolado (responder + `discoverCore()` no mesmo processo, unicast direto porta-a-porta) confirmando o formato de mensagens e o fluxo de request/response; broadcast de verdade (`255.255.255.255`) não foi testável dentro do sandbox de desenvolvimento (redes de container tipicamente bloqueiam broadcast), mas o mecanismo é padrão de rede local (mesmo usado por SSDP/mDNS) e funciona em LANs domésticas/de escritório reais.
+
 ## Próximos passos (não feitos agora, de propósito)
 
-- **Autenticação no `AgentGateway`**: hoje qualquer processo que abrir o WebSocket é tratado como Agent válido — pendência de segurança registrada na seção 11, antes de qualquer exposição fora de `localhost`. A API HTTP da seção 13 também não tem autenticação (mesma lógica: só pensada para uso local/interno por enquanto).
+- **Autenticação no `AgentGateway`**: hoje qualquer processo que abrir o WebSocket é tratado como Agent válido — pendência de segurança registrada na seção 11, antes de qualquer exposição fora de `localhost`. A API HTTP da seção 13 também não tem autenticação (mesma lógica: só pensada para uso local/interno por enquanto). O protocolo de descoberta da seção 15 tem a mesma postura: qualquer um na rede local pode perguntar "onde está o Core?" e obter resposta.
+- Instalador/serviço Windows para `apps/agent-windows` que também empacote a descoberta automática num fluxo "baixou, rodou, funcionou" sem qualquer variável de ambiente — a descoberta em si (seção 15) já elimina a necessidade de digitar o IP manualmente, mas ainda falta o passo de rodar como serviço no boot (ver item já existente logo abaixo).
 - Funcionalidades do Windows explicitamente adiadas: screenshot, explorer, terminal remoto, transferência de arquivos, clipboard, processos, serviços, Wake On LAN, Remote Desktop, instalação de softwares.
 - Métricas mais detalhadas: disco por drive (`C:\`, `D:\`, ...) em vez de um único percentual agregado; CPU por núcleo.
 - Persistência real do `DeviceRegistry` (hoje `InMemoryDeviceRegistry` esquece tudo ao reiniciar `apps/plugin-host`, e o `EventLog` da seção 13 também é só em memória).

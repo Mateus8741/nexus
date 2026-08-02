@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nexus/agent-protocol": "workspace:*",
     "@nexus/application": "workspace:*",
     "@nexus/domain": "workspace:*",
     "@nexus/infrastructure": "workspace:*",

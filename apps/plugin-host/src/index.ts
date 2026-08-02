@@ -9,6 +9,7 @@ import {
   type PluginSource,
 } from "@nexus/plugins-sdk";
 
+import { DiscoveryResponder } from "./discovery/discovery-responder";
 import { EventLog } from "./http/event-log";
 import { createHttpServer } from "./http/server";
 import { createConsoleLogger } from "./runtime/console-logger";
@@ -91,6 +92,15 @@ async function bootstrap(): Promise<void> {
   });
   httpServer.listen(HTTP_PORT);
 
+  // Responde em UDP broadcast a Agents perguntando "onde está o Core?" —
+  // dispensa que alguém precise descobrir e digitar o IP desta máquina
+  // manualmente (ver apps/agent-windows/src/discovery.ts).
+  const discoveryResponder = new DiscoveryResponder({
+    wsPort: AGENT_GATEWAY_PORT,
+    httpPort: HTTP_PORT,
+  });
+  discoveryResponder.start();
+
   logger.info(`Pronto. Aguardando Agents em ws://localhost:${AGENT_GATEWAY_PORT}`);
   logger.info(`API HTTP disponível em http://localhost:${HTTP_PORT}`);
 
@@ -106,6 +116,7 @@ async function bootstrap(): Promise<void> {
     }
     await agentGateway.close();
     httpServer.close();
+    await discoveryResponder.close();
     process.exit(0);
   };
 

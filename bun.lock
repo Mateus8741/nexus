@@ -30,6 +30,7 @@
       "name": "@nexus/plugin-host",
       "version": "0.1.0",
       "dependencies": {
+        "@nexus/agent-protocol": "workspace:*",
         "@nexus/application": "workspace:*",
         "@nexus/domain": "workspace:*",
         "@nexus/infrastructure": "workspace:*",

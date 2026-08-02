@@ -32,6 +32,13 @@ export { isAgentMessage } from "./agent-messages";
 export type { CoreActionCommandMessage, CoreMessage, CoreMessageType } from "./core-messages";
 export { isCoreMessage } from "./core-messages";
 
+export type { DiscoveryRequestMessage, DiscoveryResponseMessage } from "./discovery";
+export {
+  DISCOVERY_DEFAULT_PORT,
+  isDiscoveryRequestMessage,
+  isDiscoveryResponseMessage,
+} from "./discovery";
+
 export type { AgentMetricsSnapshot, AgentSystemInfo } from "./metrics";
 
 export { AGENT_PROTOCOL_VERSION } from "./version";

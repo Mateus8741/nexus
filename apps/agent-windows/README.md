@@ -12,8 +12,20 @@ bun run --filter @nexus/agent-windows dev
 
 Variáveis de ambiente:
 
-- `NEXUS_CORE_URL` — endereço do WebSocket do Core (padrão `ws://localhost:4600`).
+- `NEXUS_CORE_URL` — endereço do WebSocket do Core (opcional — ver "Descoberta automática do Core" abaixo).
 - `NEXUS_DEVICE_NAME` — nome de exibição do dispositivo (padrão: hostname da máquina).
+
+## Descoberta automática do Core
+
+Se `NEXUS_CORE_URL` não for definido, o Agent pergunta sozinho "onde está o Core?" via broadcast UDP na rede local (porta 41234) e usa o primeiro que responder — não é preciso descobrir/digitar o IP manualmente. Isso funciona quando Core e Agent estão na mesma rede local (mesmo Wi-Fi/switch), o que é o caso típico.
+
+Se ninguém responder em 3 segundos (Core desligado, firewall bloqueando UDP broadcast, ou máquinas em sub-redes diferentes que o roteador não repassa broadcast entre si), o Agent desiste e imprime instruções para definir `NEXUS_CORE_URL` manualmente:
+
+```cmd
+set NEXUS_CORE_URL=ws://192.168.1.10:4600
+```
+
+A descoberta automática é sempre tentada primeiro; `NEXUS_CORE_URL` manual sempre tem prioridade quando definida (útil se broadcast estiver bloqueado ou Core/Agent estiverem em redes diferentes via VPN, por exemplo).
 
 O id do dispositivo (`agentId`) é gerado uma vez e persistido em `~/.nexus/agent-id` (no Windows, `%USERPROFILE%\.nexus\agent-id`) — reinícios do processo continuam sendo reconhecidos como o mesmo dispositivo pelo Core.
 
@@ -28,6 +40,13 @@ bun run --filter @nexus/agent-windows package:windows
 ```
 
 Isso gera `apps/agent-windows/dist/nexus-agent-windows.exe` (~95 MB, porque embute o runtime inteiro — normal para este tipo de binário). Copie só esse arquivo para a máquina Windows e rode:
+
+```cmd
+set NEXUS_DEVICE_NAME=PC-da-Sala
+nexus-agent-windows.exe
+```
+
+Sem precisar definir `NEXUS_CORE_URL` — o Agent encontra o Core sozinho na rede local (ver "Descoberta automática do Core" acima). Só defina `NEXUS_CORE_URL` manualmente se a descoberta automática falhar:
 
 ```cmd
 set NEXUS_CORE_URL=ws://<ip-do-core>:4600
