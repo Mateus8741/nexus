@@ -70,27 +70,49 @@ $env:NEXUS_CORE_URL="wss://core.seudominio.com"; .\nexus-agent-windows.exe
 
 `dist/` é ignorado pelo `.gitignore` e pelo Biome — o executável é sempre gerado sob demanda a partir do código-fonte, nunca é a fonte da verdade. Rode o `package:windows` de novo sempre que `src/` ou `@nexus/agent-protocol` mudarem.
 
-## Instalação permanente (roda sozinho, em segundo plano)
+## Instalação permanente (inicia no boot, antes do login)
 
-Pra não precisar abrir terminal e digitar comando toda vez que for colocar o Agent numa máquina nova, use `scripts/install.ps1`: ele copia o `.exe`, salva a configuração (`NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME`) e cria um atalho na pasta "Inicializar" do usuário apontando pro PowerShell rodando o Agent escondido (sem janela) — o Windows executa isso automaticamente sempre que ele fizer login — e já inicia na hora, sem esperar o próximo login. Não depende do Task Scheduler nem do Windows Script Host (wscript.exe/cscript.exe), então funciona mesmo em PCs corporativos com política de grupo restritiva (esse foi, na prática, o motivo de duas versões anteriores deste instalador não funcionarem — ver ARCHITECTURE.md seção 17).
+Pra não precisar abrir terminal toda vez, use `scripts/install.ps1`. No modo padrão (**Service**) ele:
 
-Copie `nexus-agent-windows.exe`, `scripts/install.ps1` e `scripts/uninstall.ps1` para a mesma pasta na máquina Windows e, no PowerShell:
+1. Copia o `.exe` para `C:\ProgramData\NexusAgent\`
+2. Grava `config.json` (URL do Core, nome, credenciais opcionais)
+3. Cria a tarefa agendada **NexusAgent** com gatilho **no boot**, rodando como **SYSTEM** — sobe ao ligar o PC, **mesmo sem ninguém ter feito login** (mesmo espírito do AnyDesk)
+4. Remove o atalho legado da pasta Inicializar (se existir)
+5. Já inicia na hora
+
+**Requer PowerShell como Administrador.** Copie `nexus-agent-windows.exe`, `install.ps1`, `uninstall.ps1` e `set-credentials.ps1` para a mesma pasta na máquina Windows:
 
 ```powershell
+# Como Administrador:
 .\install.ps1 -CoreUrl "wss://core.seudominio.com" -DeviceName "PC-da-Sala"
 ```
 
-(ou `-CoreUrl "ws://192.168.0.8:4700"` se o Core estiver na rede local). Não precisa rodar como Administrador. Depois disso, nunca mais é preciso setar `NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME` manualmente nessa máquina — ficam persistidos em `%LOCALAPPDATA%\NexusAgent\config.json`, que o Agent lê sozinho (ver `src/config.ts`; variável de ambiente, se definida, ainda tem prioridade sobre isso).
+O instalador pede a **senha da conta Windows** (para AutoLogon / uso futuro). **Não use o PIN do Windows Hello** — ele fica no TPM e não pode ser reutilizado por outro programa. A senha é guardada criptografada com DPAPI (só esta máquina consegue ler).
 
-A saída do processo (logs) fica em `%LOCALAPPDATA%\NexusAgent\agent.log` (e `agent.err.log` para erros), útil para diagnosticar sem precisar rodar na mão de novo.
+```powershell
+# Guardar senha + entrar sozinho após o boot (sessão interativa sem alguém na frente):
+.\install.ps1 -CoreUrl "wss://core.seudominio.com" -EnableAutoLogon
 
-Para remover tudo (autostart, processo, arquivos):
+# Sem guardar senha:
+.\install.ps1 -CoreUrl "wss://core.seudominio.com" -SkipCredentials
+
+# Trocar a senha depois:
+.\set-credentials.ps1
+```
+
+Fallback **sem Admin** (só depois do login do usuário, pasta Inicializar — comportamento antigo):
+
+```powershell
+.\install.ps1 -CoreUrl "wss://core.seudominio.com" -Mode UserStartup
+```
+
+Logs: `C:\ProgramData\NexusAgent\agent.log` (modo Service) ou `%LOCALAPPDATA%\NexusAgent\agent.log` (UserStartup).
+
+Desinstalar (como Admin se tiver instalado em modo Service):
 
 ```powershell
 .\uninstall.ps1
 ```
-
-Isso ainda não é um "serviço do Windows" de verdade (não inicia antes de qualquer login, ex.: numa máquina que reinicia sem ninguém logar) — é autostart por usuário via pasta Inicializar, o que cobre o caso comum (PC de mesa/notebook de uso pessoal ou corporativo, onde alguém sempre faz login). Virar um serviço real (`Local System`, inicia no boot sem login) é um passo futuro, se necessário.
 
 ## Sem instalação permanente (rodando manualmente, uma vez)
 
