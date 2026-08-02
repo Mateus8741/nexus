@@ -36,6 +36,8 @@ export interface AgentActionResultMessage extends AgentMessageBase {
   readonly requestId: string;
   readonly success: boolean;
   readonly error?: string;
+  /** Saída textual (ex.: stdout/stderr de `executeCommand`), quando houver. */
+  readonly output?: string;
 }
 
 export type AgentMessage =

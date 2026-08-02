@@ -20,6 +20,12 @@ export interface DeviceActionResult {
   readonly success: boolean;
   /** Presente quando `success` é `false`. */
   readonly error?: string;
+  /**
+   * Saída textual da ação, quando fizer sentido (ex.: stdout/stderr de
+   * `executeCommand`). Opcional — a maioria das ações só precisa de
+   * success/error.
+   */
+  readonly output?: string;
   /** Estado resultante, se o provider souber informar de imediato (sem round-trip extra). */
   readonly resultingState?: DeviceState;
 }

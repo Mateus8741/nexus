@@ -105,6 +105,7 @@ export interface DeviceActionInput {
 export interface DeviceActionOutcome {
   readonly success: boolean;
   readonly error?: string;
+  readonly output?: string;
 }
 
 /**
@@ -132,7 +133,7 @@ export async function executeDeviceAction(
     }
 
     const result = (await response.json()) as DeviceActionOutcome;
-    return { success: result.success, error: result.error };
+    return { success: result.success, error: result.error, output: result.output };
   } catch (error) {
     console.warn(`[nexus-client] falha ao executar ação "${action.type}" em ${deviceId}:`, error);
     return { success: false, error: "Falha de comunicação com o plugin-host." };

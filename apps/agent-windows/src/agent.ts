@@ -10,7 +10,7 @@ import type { RawData } from "ws";
 import { WebSocket } from "ws";
 
 import { collectMetrics } from "./metrics";
-import type { SystemActions } from "./system-actions";
+import { CommandExecutionError, type SystemActions } from "./system-actions";
 import { collectSystemInfo } from "./system-info";
 
 export interface WindowsAgentOptions {
@@ -122,6 +122,7 @@ export class WindowsAgent {
     command?: string,
   ): Promise<void> {
     try {
+      let output: string | undefined;
       switch (action) {
         case "shutdown":
           await this.options.systemActions.shutdown();
@@ -133,7 +134,7 @@ export class WindowsAgent {
           await this.options.systemActions.lock();
           break;
         case "executeCommand":
-          await this.options.systemActions.executeCommand(command ?? "");
+          output = await this.options.systemActions.executeCommand(command ?? "");
           break;
       }
       this.send({
@@ -141,14 +142,17 @@ export class WindowsAgent {
         agentId: this.options.agentId,
         requestId,
         success: true,
+        ...(output !== undefined ? { output } : {}),
       } satisfies AgentActionResultMessage);
     } catch (error) {
+      const output = error instanceof CommandExecutionError ? error.output : undefined;
       this.send({
         type: "action-result",
         agentId: this.options.agentId,
         requestId,
         success: false,
         error: error instanceof Error ? error.message : String(error),
+        ...(output !== undefined && output.length > 0 ? { output } : {}),
       } satisfies AgentActionResultMessage);
     }
   }

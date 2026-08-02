@@ -228,7 +228,11 @@ export class WindowsDeviceProvider implements DeviceProvider {
     if (!pending) return; // resposta atrasada de uma ação que já expirou, ou requestId desconhecido
     clearTimeout(pending.timer);
     this.pendingActions.delete(message.requestId);
-    pending.resolve({ success: message.success, error: message.error });
+    pending.resolve({
+      success: message.success,
+      error: message.error,
+      output: message.output,
+    });
   }
 
   private handleConnectionClosed(connection: AgentConnection): void {
