@@ -72,7 +72,7 @@ $env:NEXUS_CORE_URL="wss://core.seudominio.com"; .\nexus-agent-windows.exe
 
 ## Instalação permanente (roda sozinho, em segundo plano)
 
-Pra não precisar abrir terminal e digitar comando toda vez que for colocar o Agent numa máquina nova, use `scripts/install.ps1`: ele copia o `.exe`, salva a configuração (`NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME`) e coloca o Agent na pasta "Inicializar" do usuário, que o Windows roda automaticamente (escondido, sem janela) sempre que ele fizer login — e já inicia na hora, sem esperar o próximo login. Não depende do Task Scheduler, então funciona mesmo em PCs corporativos com política de grupo restritiva.
+Pra não precisar abrir terminal e digitar comando toda vez que for colocar o Agent numa máquina nova, use `scripts/install.ps1`: ele copia o `.exe`, salva a configuração (`NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME`) e cria um atalho na pasta "Inicializar" do usuário apontando pro PowerShell rodando o Agent escondido (sem janela) — o Windows executa isso automaticamente sempre que ele fizer login — e já inicia na hora, sem esperar o próximo login. Não depende do Task Scheduler nem do Windows Script Host (wscript.exe/cscript.exe), então funciona mesmo em PCs corporativos com política de grupo restritiva (esse foi, na prática, o motivo de duas versões anteriores deste instalador não funcionarem — ver ARCHITECTURE.md seção 17).
 
 Copie `nexus-agent-windows.exe`, `scripts/install.ps1` e `scripts/uninstall.ps1` para a mesma pasta na máquina Windows e, no PowerShell:
 
@@ -82,15 +82,15 @@ Copie `nexus-agent-windows.exe`, `scripts/install.ps1` e `scripts/uninstall.ps1`
 
 (ou `-CoreUrl "ws://192.168.0.8:4700"` se o Core estiver na rede local). Não precisa rodar como Administrador. Depois disso, nunca mais é preciso setar `NEXUS_CORE_URL`/`NEXUS_DEVICE_NAME` manualmente nessa máquina — ficam persistidos em `%LOCALAPPDATA%\NexusAgent\config.json`, que o Agent lê sozinho (ver `src/config.ts`; variável de ambiente, se definida, ainda tem prioridade sobre isso).
 
-A saída do processo (logs) fica em `%LOCALAPPDATA%\NexusAgent\agent.log`, útil para diagnosticar sem precisar rodar na mão de novo.
+A saída do processo (logs) fica em `%LOCALAPPDATA%\NexusAgent\agent.log` (e `agent.err.log` para erros), útil para diagnosticar sem precisar rodar na mão de novo.
 
-Para remover tudo (tarefa agendada, processo, arquivos):
+Para remover tudo (autostart, processo, arquivos):
 
 ```powershell
 .\uninstall.ps1
 ```
 
-Isso ainda não é um "serviço do Windows" de verdade (não inicia antes de qualquer login, ex.: numa máquina que reinicia sem ninguém logar) — é uma Tarefa Agendada disparada no login do usuário, o que cobre o caso comum (PC de mesa/notebook de uso pessoal). Virar um serviço real (`Local System`, inicia no boot sem login) é um passo futuro, se necessário.
+Isso ainda não é um "serviço do Windows" de verdade (não inicia antes de qualquer login, ex.: numa máquina que reinicia sem ninguém logar) — é autostart por usuário via pasta Inicializar, o que cobre o caso comum (PC de mesa/notebook de uso pessoal ou corporativo, onde alguém sempre faz login). Virar um serviço real (`Local System`, inicia no boot sem login) é um passo futuro, se necessário.
 
 ## Sem instalação permanente (rodando manualmente, uma vez)
 

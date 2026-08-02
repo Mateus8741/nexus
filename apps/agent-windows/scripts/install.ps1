@@ -10,18 +10,21 @@
   2. Grava NEXUS_CORE_URL/NEXUS_DEVICE_NAME em config.json nessa mesma
      pasta — o Agent lê esse arquivo automaticamente (ver src/config.ts),
      então não é preciso setar variável de ambiente nenhuma depois.
-  3. Gera um pequeno "launcher" (.vbs) que roda o Agent com a janela do
-     console escondida, redirecionando toda a saída para agent.log (útil
-     para diagnosticar problema sem precisar rodar na mão de novo).
-  4. Copia esse launcher para a pasta "Inicializar" (Startup) do usuário
-     atual — o Windows roda automaticamente qualquer coisa ali sempre que
-     esse usuário faz login — e já inicia agora mesmo, sem esperar o
-     próximo login.
+  3. Gera launcher.ps1, um script PowerShell puro que roda o Agent com a
+     janela do console escondida (via Start-Process -WindowStyle Hidden),
+     redirecionando toda a saída para agent.log/agent.err.log.
+  4. Cria um atalho (.lnk) na pasta "Inicializar" (Startup) do usuário
+     atual apontando pro PowerShell rodando esse launcher, escondido — o
+     Windows executa automaticamente qualquer coisa ali no login. Já
+     inicia agora mesmo também, sem esperar o próximo login.
 
-  Não precisa rodar como Administrador nem depende do Task Scheduler:
-  tudo fica dentro da pasta do próprio usuário (%LOCALAPPDATA% e a pasta
-  Startup dele), então funciona mesmo em PCs corporativos/gerenciados que
-  bloqueiam a criação de Tarefas Agendadas por política de grupo.
+  Não precisa rodar como Administrador, não depende do Task Scheduler nem
+  do Windows Script Host (wscript.exe/cscript.exe) — só PowerShell puro e
+  a pasta Inicializar do próprio usuário. Isso importa porque PCs
+  corporativos/gerenciados costumam bloquear Tarefas Agendadas e/ou
+  Windows Script Host por política de grupo (foi exatamente o que
+  aconteceu na primeira versão deste instalador — ver ARCHITECTURE.md
+  seção 17).
 
 .PARAMETER CoreUrl
   URL do Core (ws://IP:PORTA para rede local, wss://dominio para nuvem).
@@ -66,27 +69,48 @@ $config = @{ coreUrl = $CoreUrl; deviceName = $DeviceName } | ConvertTo-Json
 # sem BOM.
 [System.IO.File]::WriteAllText($configPath, $config, [System.Text.UTF8Encoding]::new($false))
 
+# Limpa artefatos de versões anteriores deste instalador (Tarefa Agendada
+# e launcher .vbs) — não faz mal se não existirem.
+schtasks /Delete /TN "NexusAgent" /F 2>$null | Out-Null
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $installDir "launcher.vbs")
+Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path ([Environment]::GetFolderPath("Startup")) "NexusAgent.vbs")
+
 $logPath = Join-Path $installDir "agent.log"
-$vbsPath = Join-Path $installDir "launcher.vbs"
-$vbsContent = @(
-    'Set objShell = CreateObject("WScript.Shell")'
-    ('objShell.Run "cmd /c ""{0}"" >> ""{1}"" 2>&1", 0, False' -f $exeDest, $logPath)
+$errLogPath = Join-Path $installDir "agent.err.log"
+
+# Launcher em PowerShell puro (sem Windows Script Host): Start-Process
+# -WindowStyle Hidden esconde a janela do processo iniciado nativamente,
+# sem envolver wscript.exe/cscript.exe.
+$launcherPath = Join-Path $installDir "launcher.ps1"
+$launcherContent = (
+    'Start-Process -FilePath "{0}" -WindowStyle Hidden -RedirectStandardOutput "{1}" -RedirectStandardError "{2}"' -f $exeDest, $logPath, $errLogPath
 )
-Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII
+[System.IO.File]::WriteAllText($launcherPath, $launcherContent, [System.Text.UTF8Encoding]::new($false))
 
-# Pasta "Inicializar" do usuário atual (%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup)
-# — o Windows executa automaticamente qualquer coisa ali no login deste
-# usuário. Não depende do Task Scheduler nem de nenhuma permissão especial;
-# funciona mesmo em PCs corporativos que bloqueiam Tarefas Agendadas.
+$launcherArgs = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcherPath`""
+
+# Atalho (.lnk) na pasta "Inicializar" do usuário atual, apontando pro
+# PowerShell rodando launcher.ps1 escondido. `New-Object -ComObject
+# WScript.Shell` aqui só instancia um componente COM dentro do próprio
+# processo do PowerShell — não inicia wscript.exe/cscript.exe como
+# processo separado, então não é afetado por uma política que bloqueie
+# especificamente esses dois executáveis.
 $startupDir = [Environment]::GetFolderPath("Startup")
-$startupLauncher = Join-Path $startupDir "NexusAgent.vbs"
-Copy-Item -Path $vbsPath -Destination $startupLauncher -Force
+$shortcutPath = Join-Path $startupDir "NexusAgent.lnk"
+$wshShell = New-Object -ComObject WScript.Shell
+$shortcut = $wshShell.CreateShortcut($shortcutPath)
+$shortcut.TargetPath = "powershell.exe"
+$shortcut.Arguments = $launcherArgs
+$shortcut.WorkingDirectory = $installDir
+$shortcut.Save()
 
-# Inicia agora, sem esperar o próximo login
-Start-Process -FilePath "wscript.exe" -ArgumentList "`"$vbsPath`""
+# Inicia agora, sem esperar o próximo login. Um novo processo powershell.exe
+# escondido, independente deste terminal — fechar este terminal não deve
+# derrubar o Agent (diferente de rodar o .exe direto na mão).
+Start-Process -FilePath "powershell.exe" -ArgumentList $launcherArgs -WindowStyle Hidden
 
 Write-Host ""
 Write-Host "Nexus Agent instalado e rodando em segundo plano."
 Write-Host "Vai iniciar sozinho sempre que $env:USERNAME fizer login neste PC (via pasta Inicializar) — não precisa mais rodar comando nenhum."
-Write-Host "Log em: $logPath"
+Write-Host "Log em: $logPath (e $errLogPath para erros)"
 Write-Host "Para desinstalar: rode uninstall.ps1 (mesma pasta deste script)."

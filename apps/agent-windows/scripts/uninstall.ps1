@@ -9,13 +9,14 @@ $ErrorActionPreference = "SilentlyContinue"
 $installDir = Join-Path $env:LOCALAPPDATA "NexusAgent"
 $exeDest = Join-Path $installDir "nexus-agent-windows.exe"
 
-# Tarefa Agendada: só existe em instalações feitas com uma versão anterior
-# deste script (antes de trocar para a pasta Inicializar) — tentar remover
-# de qualquer forma não faz mal se ela não existir.
+# Versões anteriores deste instalador usavam Tarefa Agendada e/ou um
+# launcher .vbs em vez do atalho .lnk atual — tentar remover os três não
+# faz mal se algum não existir.
 schtasks /Delete /TN "NexusAgent" /F | Out-Null
 
 $startupDir = [Environment]::GetFolderPath("Startup")
 Remove-Item -Force (Join-Path $startupDir "NexusAgent.vbs")
+Remove-Item -Force (Join-Path $startupDir "NexusAgent.lnk")
 
 Get-Process -Name "nexus-agent-windows" | Where-Object {
     $_.Path -eq $exeDest
