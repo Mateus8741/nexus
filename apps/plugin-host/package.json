@@ -7,15 +7,20 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "bun run --filter @nexus/db push"
   },
   "dependencies": {
     "@nexus/agent-protocol": "workspace:*",
     "@nexus/application": "workspace:*",
+    "@nexus/auth": "workspace:*",
+    "@nexus/db": "workspace:*",
     "@nexus/domain": "workspace:*",
     "@nexus/infrastructure": "workspace:*",
     "@nexus/plugin-windows": "workspace:*",
-    "@nexus/plugins-sdk": "workspace:*"
+    "@nexus/plugins-sdk": "workspace:*",
+    "better-auth": "1.2.12",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@nexus/typescript-config": "workspace:*",

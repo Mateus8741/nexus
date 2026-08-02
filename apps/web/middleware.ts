@@ -1,0 +1,50 @@
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+
+const PUBLIC_PATHS = ["/login", "/setup"];
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (
+    PUBLIC_PATHS.some((path) => pathname.startsWith(path)) ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon")
+  ) {
+    return NextResponse.next();
+  }
+
+  const coreUrl = process.env.NEXUS_PLUGIN_HOST_URL ?? "http://localhost:4700";
+
+  try {
+    const setupRes = await fetch(`${coreUrl}/setup/status`, { cache: "no-store" });
+    if (setupRes.ok) {
+      const setup = (await setupRes.json()) as { needsSetup: boolean };
+      if (setup.needsSetup && !pathname.startsWith("/setup")) {
+        return NextResponse.redirect(new URL("/setup", request.url));
+      }
+    }
+  } catch {
+    // Core offline — deixa passar para a página mostrar erro
+  }
+
+  try {
+    const meRes = await fetch(`${coreUrl}/me`, {
+      headers: { cookie: request.headers.get("cookie") ?? "" },
+      cache: "no-store",
+    });
+    if (meRes.status === 401) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+  } catch {
+    // Core offline
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|.*\\.png$).*)"],
+};

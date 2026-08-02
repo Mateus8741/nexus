@@ -2,12 +2,12 @@
 
 import { Button } from "@nexus/ui/components/button";
 import {
+  type FormEvent,
+  type KeyboardEvent,
   useEffect,
   useRef,
   useState,
   useTransition,
-  type FormEvent,
-  type KeyboardEvent,
 } from "react";
 
 import { runDeviceAction } from "@/lib/actions/device-actions";

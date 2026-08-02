@@ -13,8 +13,10 @@
   },
   "dependencies": {
     "@nexus/application": "workspace:*",
+    "@nexus/db": "workspace:*",
     "@nexus/domain": "workspace:*",
     "@nexus/plugins-sdk": "workspace:*",
+    "drizzle-orm": "^0.44.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

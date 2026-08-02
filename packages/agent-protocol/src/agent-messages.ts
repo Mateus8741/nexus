@@ -5,10 +5,8 @@ interface AgentMessageBase {
 }
 
 /**
- * Primeira mensagem que um Agent envia ao conectar. `agentId` deve ser
- * estável entre reconexões (o Agent persiste esse valor localmente) — é o
- * que permite ao Core reconhecer "esse é o mesmo dispositivo de antes" em
- * vez de criar um Device novo a cada reconexão.
+ * Primeira mensagem que um Agent envia ao conectar. `token` é obrigatório
+ * após aprovação; sem token o Core trata como pedido de pareamento (pending).
  */
 export interface AgentRegisterMessage extends AgentMessageBase {
   readonly type: "register";
@@ -16,6 +14,8 @@ export interface AgentRegisterMessage extends AgentMessageBase {
   readonly kind: "windows";
   readonly name: string;
   readonly system: AgentSystemInfo;
+  readonly token?: string;
+  readonly publicKey?: string;
 }
 
 /** Sinal de vida periódico. Não carrega métricas — só prova que o processo está de pé. */
@@ -67,7 +67,9 @@ export function isAgentMessage(value: unknown): value is AgentMessage {
         typeof value.protocolVersion === "string" &&
         value.kind === "windows" &&
         typeof value.name === "string" &&
-        isRecord(value.system)
+        isRecord(value.system) &&
+        (value.token === undefined || typeof value.token === "string") &&
+        (value.publicKey === undefined || typeof value.publicKey === "string")
       );
     case "heartbeat":
       return typeof value.sentAt === "string";

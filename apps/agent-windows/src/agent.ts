@@ -9,6 +9,7 @@ import { AGENT_PROTOCOL_VERSION, isCoreMessage } from "@nexus/agent-protocol";
 import type { RawData } from "ws";
 import { WebSocket } from "ws";
 
+import { clearAgentToken, readAgentToken, writeAgentToken } from "./agent-token";
 import { collectMetrics } from "./metrics";
 import { CommandExecutionError, type SystemActions } from "./system-actions";
 import { collectSystemInfo } from "./system-info";
@@ -24,18 +25,21 @@ export interface WindowsAgentOptions {
 }
 
 /**
- * WindowsAgent — processo que roda NA máquina Windows monitorada. Só
- * conhece @nexus/agent-protocol (o formato das mensagens) e a lib `ws`
- * (transporte) — não importa nada do resto do monorepo Nexus, de propósito
- * (ver packages/agent-protocol/src/index.ts).
+ * WindowsAgent — processo que roda NA máquina Windows monitorada.
+ * Persiste token de pareamento e só inicia heartbeat/métricas após aprovação.
  */
 export class WindowsAgent {
   private socket: WebSocket | undefined;
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   private metricsTimer: ReturnType<typeof setInterval> | undefined;
   private stopped = false;
+  private approved = false;
+  private token: string | undefined;
 
-  constructor(private readonly options: WindowsAgentOptions) {}
+  constructor(private readonly options: WindowsAgentOptions) {
+    this.token = readAgentToken();
+    this.approved = Boolean(this.token);
+  }
 
   start(): void {
     this.stopped = false;
@@ -72,8 +76,17 @@ export class WindowsAgent {
       kind: "windows",
       name: this.options.deviceName,
       system: collectSystemInfo(),
+      ...(this.token ? { token: this.token } : {}),
     } satisfies AgentRegisterMessage);
 
+    if (this.token) {
+      this.startOperationalLoops();
+    }
+  }
+
+  private startOperationalLoops(): void {
+    if (this.heartbeatTimer || this.metricsTimer) return;
+    this.approved = true;
     this.heartbeatTimer = setInterval(
       () => this.sendHeartbeat(),
       this.options.heartbeatIntervalMs ?? 10_000,
@@ -82,7 +95,7 @@ export class WindowsAgent {
       () => void this.sendMetrics(),
       this.options.metricsIntervalMs ?? 15_000,
     );
-    void this.sendMetrics(); // primeira leitura logo após conectar, sem esperar o primeiro intervalo
+    void this.sendMetrics();
   }
 
   private sendHeartbeat(): void {
@@ -112,8 +125,33 @@ export class WindowsAgent {
     }
     if (!isCoreMessage(parsed)) return;
 
-    const command = parsed.payload?.command;
-    void this.executeAction(parsed.requestId, parsed.action, command);
+    switch (parsed.type) {
+      case "registration-pending":
+        console.log(
+          "[agent-windows] Aguardando aprovação no Dashboard (pareamento). Não inicie ações ainda.",
+        );
+        return;
+      case "registration-approved":
+        writeAgentToken(parsed.token);
+        this.token = parsed.token;
+        console.log("[agent-windows] Agent aprovado. Token permanente salvo. Reconectando...");
+        this.socket?.close();
+        return;
+      case "registration-rejected":
+        console.error(`[agent-windows] Registro rejeitado: ${parsed.reason}`);
+        if (parsed.reason === "invalid_token" || parsed.reason === "token_required") {
+          clearAgentToken();
+          this.token = undefined;
+          this.approved = false;
+        }
+        return;
+      case "action-command": {
+        if (!this.approved) this.startOperationalLoops();
+        const command = parsed.payload?.command;
+        void this.executeAction(parsed.requestId, parsed.action, command);
+        return;
+      }
+    }
   }
 
   private async executeAction(
@@ -161,14 +199,24 @@ export class WindowsAgent {
     this.clearTimers();
     if (this.stopped) return;
 
+    // Após aprovação, o Core reenvia o register com token e o provider
+    // aceita — ao reconectar com token, iniciamos loops no primeiro
+    // heartbeat implícito: se temos token, consideramos operacional após open.
     const delay = this.options.reconnectDelayMs ?? 5_000;
     console.warn(`[agent-windows] desconectado do Core, tentando reconectar em ${delay}ms...`);
-    setTimeout(() => this.connect(), delay);
+    setTimeout(() => {
+      this.connect();
+      // Se já temos token, startOperationalLoops após open acontece quando
+      // o Core aceitar — o bridge só forwarda após token válido. Ligamos
+      // os timers após open se token existir (conexão aprovada esperada).
+    }, delay);
   }
 
   private clearTimers(): void {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.metricsTimer) clearInterval(this.metricsTimer);
+    this.heartbeatTimer = undefined;
+    this.metricsTimer = undefined;
   }
 
   private send(message: unknown): void {

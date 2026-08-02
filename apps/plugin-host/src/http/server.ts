@@ -1,80 +1,191 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import http from "node:http";
-import type { ExecuteDeviceActionUseCase } from "@nexus/application";
-import { toDeviceDto, toDeviceEventDto } from "@nexus/application";
 import type {
+  ApproveAgentUseCase,
+  CreateApiKeyUseCase,
+  ExecuteDeviceActionUseCase,
+  ListAgentsUseCase,
+  ListApiKeysUseCase,
+  ListAuditLogsUseCase,
+  ListPersistedEventsUseCase,
+  ListRolesUseCase,
+  ListUsersUseCase,
+  RevokeAgentUseCase,
+  RevokeApiKeyUseCase,
+  RotateAgentTokenUseCase,
+} from "@nexus/application";
+import { toDeviceDto, toDeviceEventDto } from "@nexus/application";
+import type { NexusAuth } from "@nexus/auth";
+import { attachOwnerMembership, countUsers } from "@nexus/auth";
+import type { NexusDatabase } from "@nexus/db";
+import type {
+  ActorContext,
   AuditLog,
   CapabilityRegistry,
   DeviceEvent,
   DeviceProvider,
   DeviceRegistry,
+  EventBus,
+  PermissionService,
+  SystemEvent,
 } from "@nexus/domain";
+import { PermissionDeniedError } from "@nexus/domain";
+import { generateAgentToken, generateApiKey } from "@nexus/infrastructure";
 import type { PluginRegistry } from "@nexus/plugins-sdk";
+import { toNodeHandler } from "better-auth/node";
+import { z } from "zod";
+
+import type { AgentPairingBridge } from "../agents/agent-pairing-bridge";
+import { type ResolveActorDeps, resolveActor } from "../auth/resolve-actor";
 
 export interface HttpServerDeps {
+  readonly db: NexusDatabase;
+  readonly auth: NexusAuth;
+  readonly resolveActorDeps: ResolveActorDeps;
   readonly deviceRegistry: DeviceRegistry;
   readonly pluginRegistry: PluginRegistry;
-  // Hoje só [windowsProvider] — array (não um único provider) porque o
-  // bootstrap já sabe que outros providers (Docker, Home Assistant, Tuya...)
-  // vão se somar a este sem precisar mexer aqui.
   readonly providers: readonly DeviceProvider[];
   readonly auditLog: AuditLog;
   readonly capabilityRegistry: CapabilityRegistry;
   readonly executeDeviceAction: ExecuteDeviceActionUseCase;
+  readonly permissionService: PermissionService;
+  readonly eventBus: EventBus<SystemEvent>;
+  readonly listUsers: ListUsersUseCase;
+  readonly listRoles: ListRolesUseCase;
+  readonly listAgents: ListAgentsUseCase;
+  readonly listApiKeys: ListApiKeysUseCase;
+  readonly listAudit: ListAuditLogsUseCase;
+  readonly listEvents: ListPersistedEventsUseCase;
+  readonly approveAgent: ApproveAgentUseCase;
+  readonly revokeAgent: RevokeAgentUseCase;
+  readonly rotateAgentToken: RotateAgentTokenUseCase;
+  readonly createApiKey: CreateApiKeyUseCase;
+  readonly revokeApiKey: RevokeApiKeyUseCase;
+  readonly pairingBridge: AgentPairingBridge;
+  readonly defaultWorkspaceId: string;
 }
 
 const DEFAULT_EVENTS_LIMIT = 50;
-
-// Nenhum outro SystemEvent hoje começa com "device." — checar o prefixo do
-// `type` é suficiente para filtrar AuditEntry[] de volta para DeviceEvent[]
-// sem precisar importar a lista de tipos de @nexus/domain.
 const DEVICE_EVENT_PREFIX = "device.";
-
 const ACTIONS_ROUTE_PATTERN = /^\/devices\/([^/]+)\/actions$/;
 
-/**
- * Servidor HTTP somente-leitura que expõe o estado do Core (plugin-host)
- * para outros processos — hoje só o Dashboard (apps/web, via Server
- * Component fazendo fetch Node→Node). node:http puro, no mesmo espírito do
- * WebSocketAgentGateway (packages/infrastructure): poucas rotas GET, não
- * vale a pena puxar um framework HTTP para isso.
- *
- * Sem CORS e sem autenticação, de propósito: nunca é chamado direto de um
- * browser. A mesma pendência de segurança do AgentGateway (ver
- * ARCHITECTURE.md, seção 11) se aplica aqui — não expor esta porta fora de
- * localhost/rede confiável antes de existir um mecanismo de autenticação.
- */
+const setupSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  name: z.string().min(1),
+  workspaceName: z.string().min(1).optional(),
+});
+
+const createApiKeySchema = z.object({
+  name: z.string().min(1),
+  scopes: z.array(z.string()).default([]),
+});
+
 export function createHttpServer(deps: HttpServerDeps): http.Server {
+  const authHandler = toNodeHandler(deps.auth);
+
   return http.createServer((req, res) => {
-    handleRequest(deps, req, res).catch((error: unknown) => {
-      // Qualquer erro não previsto (ex.: um provider/registry lançando na
-      // hora de serializar) vira 500 em vez de derrubar o processo — este
-      // servidor roda dentro do mesmo processo que o Core de verdade.
+    handleCors(req, res);
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    handleRequest(deps, authHandler, req, res).catch((error: unknown) => {
+      if (error instanceof PermissionDeniedError) {
+        respondJson(res, 403, { error: error.message });
+        return;
+      }
+      deps.eventBus.publish({
+        type: "internal.error",
+        occurredAt: new Date(),
+        message: String(error),
+        source: "http",
+      });
       respondJson(res, 500, { error: String(error) });
     });
   });
 }
 
+function handleCors(req: IncomingMessage, res: ServerResponse): void {
+  const origin = req.headers.origin ?? "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+}
+
 async function handleRequest(
   deps: HttpServerDeps,
+  authHandler: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  // req.url nunca inclui host — a base "http://localhost" é só para o
-  // parser de URL funcionar, nunca é usada de verdade.
   const { pathname, searchParams } = new URL(req.url ?? "/", "http://localhost");
+
+  if (pathname.startsWith("/api/auth")) {
+    await authHandler(req, res);
+    return;
+  }
 
   if (req.method === "GET" && pathname === "/health") {
     respondJson(res, 200, { status: "ok" });
     return;
   }
 
+  if (req.method === "GET" && pathname === "/setup/status") {
+    const users = await countUsers(deps.db);
+    respondJson(res, 200, { needsSetup: users === 0 });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/setup") {
+    await handleSetup(deps, req, res);
+    return;
+  }
+
+  const actor = await resolveActor(deps.resolveActorDeps, req);
+  if (!actor) {
+    deps.eventBus.publish({
+      type: "auth.failure",
+      occurredAt: new Date(),
+      reason: "unauthenticated",
+      ip: req.socket.remoteAddress ?? undefined,
+    });
+    respondJson(res, 401, { error: "unauthenticated" });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/me") {
+    respondJson(res, 200, {
+      actor: {
+        type: actor.type,
+        id: actor.id,
+        workspaceId: actor.workspaceId,
+        roleKey: actor.roleKey,
+      },
+    });
+    return;
+  }
+
   if (req.method === "GET" && pathname === "/devices") {
+    await deps.permissionService.require(actor, "device.read");
     respondJson(res, 200, deps.deviceRegistry.list().map(toDeviceDto));
     return;
   }
 
   if (req.method === "GET" && pathname === "/events") {
+    const persisted = await deps.listEvents.execute({
+      actor,
+      limit: parseLimit(searchParams),
+      typePrefix: searchParams.get("prefix") ?? undefined,
+    });
+    respondJson(res, 200, persisted);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/events/device") {
     const deviceEvents = deps.auditLog
       .list(parseLimit(searchParams))
       .map((entry) => entry.event)
@@ -109,34 +220,205 @@ async function handleRequest(
     return;
   }
 
+  if (req.method === "GET" && pathname === "/users") {
+    respondJson(res, 200, await deps.listUsers.execute({ actor }));
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/roles") {
+    respondJson(res, 200, await deps.listRoles.execute({ actor }));
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/agents") {
+    const status = searchParams.get("status") as "pending" | "approved" | "revoked" | null;
+    respondJson(
+      res,
+      200,
+      await deps.listAgents.execute({
+        actor,
+        status: status ?? undefined,
+      }),
+    );
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/agents/pending") {
+    respondJson(res, 200, await deps.listAgents.execute({ actor, status: "pending" }));
+    return;
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/agents\/([^/]+)\/approve$/)) {
+    const agentId = pathname.split("/")[2] as string;
+    await handleApproveAgent(deps, actor, agentId, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/agents\/([^/]+)\/revoke$/)) {
+    const agentId = pathname.split("/")[2] as string;
+    await deps.revokeAgent.execute({ actor, agentId });
+    deps.pairingBridge.disconnectAgent(agentId);
+    respondJson(res, 200, { success: true });
+    return;
+  }
+
+  if (req.method === "POST" && pathname.match(/^\/agents\/([^/]+)\/rotate-token$/)) {
+    const agentId = pathname.split("/")[2] as string;
+    const { token, hash } = generateAgentToken();
+    await deps.rotateAgentToken.execute({ actor, agentId, newTokenHash: hash });
+    deps.pairingBridge.deliverApprovalToken(agentId, token);
+    respondJson(res, 200, { token });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api-keys") {
+    const keys = await deps.listApiKeys.execute({ actor });
+    respondJson(
+      res,
+      200,
+      keys.map((key) => ({
+        id: key.id,
+        name: key.name,
+        prefix: key.prefix,
+        scopes: key.scopes,
+        createdAt: key.createdAt,
+        expiresAt: key.expiresAt,
+        lastUsedAt: key.lastUsedAt,
+        revokedAt: key.revokedAt,
+      })),
+    );
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api-keys") {
+    await handleCreateApiKey(deps, actor, req, res);
+    return;
+  }
+
+  if (req.method === "DELETE" && pathname.match(/^\/api-keys\/([^/]+)$/)) {
+    const apiKeyId = pathname.split("/")[2] as string;
+    await deps.revokeApiKey.execute({ actor, apiKeyId });
+    respondJson(res, 200, { success: true });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/audit") {
+    respondJson(res, 200, await deps.listAudit.execute({ actor, limit: parseLimit(searchParams) }));
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/sessions") {
+    const { fromNodeHeaders } = await import("better-auth/node");
+    const session = await deps.auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    respondJson(res, 200, session ? [session.session] : []);
+    return;
+  }
+
   const actionsMatch = req.method === "POST" ? pathname.match(ACTIONS_ROUTE_PATTERN) : null;
   if (actionsMatch) {
     const deviceId = actionsMatch[1] as string;
-    await handleExecuteDeviceAction(deps, req, res, deviceId);
+    await handleExecuteDeviceAction(deps, actor, req, res, deviceId);
     return;
   }
 
   respondJson(res, 404, { error: "not found" });
 }
 
-interface ExecuteActionRequestBody {
-  readonly action?: {
-    readonly type?: unknown;
-    readonly payload?: Record<string, unknown>;
-  };
+async function handleSetup(
+  deps: HttpServerDeps,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const users = await countUsers(deps.db);
+  if (users > 0) {
+    respondJson(res, 409, { error: "Setup já concluído." });
+    return;
+  }
+
+  const body = setupSchema.safeParse(JSON.parse((await readRequestBody(req)) || "{}"));
+  if (!body.success) {
+    respondJson(res, 400, { error: body.error.flatten() });
+    return;
+  }
+
+  const result = await deps.auth.api.signUpEmail({
+    body: {
+      email: body.data.email,
+      password: body.data.password,
+      name: body.data.name,
+    },
+  });
+
+  if (!result.user) {
+    respondJson(res, 500, { error: "Falha ao criar usuário Owner." });
+    return;
+  }
+
+  await attachOwnerMembership(deps.db, result.user.id, body.data.workspaceName);
+
+  deps.eventBus.publish({
+    type: "auth.login",
+    occurredAt: new Date(),
+    userId: result.user.id,
+    ip: req.socket.remoteAddress ?? undefined,
+  });
+
+  respondJson(res, 201, { userId: result.user.id, email: result.user.email });
 }
 
-/** Só valida o mínimo (JSON parseável, `action.type` string) — o resto (se a ação existe/faz sentido para o dispositivo) é responsabilidade do provider, via ExecuteDeviceActionUseCase. */
+async function handleApproveAgent(
+  deps: HttpServerDeps,
+  actor: ActorContext,
+  agentId: string,
+  res: ServerResponse,
+): Promise<void> {
+  const { token, hash } = generateAgentToken();
+  await deps.approveAgent.execute({ actor, agentId, tokenHash: hash });
+  const delivered = deps.pairingBridge.deliverApprovalToken(agentId, token);
+  respondJson(res, 200, { token, deliveredToAgent: delivered });
+}
+
+async function handleCreateApiKey(
+  deps: HttpServerDeps,
+  actor: ActorContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const parsed = createApiKeySchema.safeParse(JSON.parse((await readRequestBody(req)) || "{}"));
+  if (!parsed.success) {
+    respondJson(res, 400, { error: parsed.error.flatten() });
+    return;
+  }
+  const generated = generateApiKey();
+  const apiKey = await deps.createApiKey.execute({
+    actor,
+    name: parsed.data.name,
+    keyHash: generated.hash,
+    prefix: generated.prefix,
+    scopes: parsed.data.scopes,
+  });
+  respondJson(res, 201, {
+    id: apiKey.id,
+    name: apiKey.name,
+    prefix: apiKey.prefix,
+    scopes: apiKey.scopes,
+    token: generated.token,
+  });
+}
+
 async function handleExecuteDeviceAction(
   deps: HttpServerDeps,
+  actor: ActorContext,
   req: IncomingMessage,
   res: ServerResponse,
   deviceId: string,
 ): Promise<void> {
-  let body: ExecuteActionRequestBody;
+  let body: { action?: { type?: unknown; payload?: Record<string, unknown> } };
   try {
     const raw = await readRequestBody(req);
-    body = raw.length > 0 ? (JSON.parse(raw) as ExecuteActionRequestBody) : {};
+    body = raw.length > 0 ? (JSON.parse(raw) as typeof body) : {};
   } catch {
     respondJson(res, 400, { error: "Corpo da requisição não é um JSON válido." });
     return;
@@ -156,8 +438,9 @@ async function handleExecuteDeviceAction(
   const result = await deps.executeDeviceAction.execute({
     deviceId,
     action: { type: action.type, payload: action.payload },
+    actor,
   });
-  respondJson(res, 200, result);
+  respondJson(res, result.success ? 200 : 403, result);
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -169,12 +452,9 @@ function readRequestBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-/** `?limit=N` inválido ou ausente cai no padrão em vez de virar erro — esta é uma rota de leitura despretensiosa, não vale a pena validar com rigor. */
 function parseLimit(searchParams: URLSearchParams): number {
   const raw = searchParams.get("limit");
-  if (raw === null) {
-    return DEFAULT_EVENTS_LIMIT;
-  }
+  if (raw === null) return DEFAULT_EVENTS_LIMIT;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_EVENTS_LIMIT;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
@@ -7,14 +8,19 @@ import { MobileSidebar } from "./mobile-sidebar";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
+const AUTH_PATHS = ["/login", "/setup"];
+
 /**
- * Composição do shell da aplicação: sidebar (desktop) + drawer (mobile) +
- * topbar + área central. Único ponto de estado (colapsar sidebar / abrir
- * drawer) é puramente de UI — nenhuma regra de negócio aqui.
+ * Composição do shell da aplicação. Páginas de auth renderizam sem chrome.
  */
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  if (AUTH_PATHS.some((path) => pathname.startsWith(path))) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="flex min-h-svh w-full bg-background text-foreground">

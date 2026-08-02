@@ -1,3 +1,4 @@
+import type { ActorType } from "../auth/actor";
 import type { SystemEvent } from "../events/system-event";
 
 export interface AuditEntry {
@@ -5,13 +6,27 @@ export interface AuditEntry {
   readonly recordedAt: Date;
 }
 
+export interface PersistedAuditRecord {
+  readonly id: number;
+  readonly workspaceId?: string;
+  readonly recordedAt: Date;
+  readonly action: string;
+  readonly actorType: ActorType | string;
+  readonly actorId?: string;
+  readonly outcome: string;
+  readonly metadata: Record<string, unknown>;
+  readonly ip?: string;
+}
+
 /**
- * AuditLog — histórico somente-leitura de tudo que passou pelo EventBus
- * (ver events/event-bus.ts). Quem escreve é sempre a implementação
- * concreta (InMemoryAuditLog, em @nexus/infrastructure), assinando o
- * EventBus sozinha — nenhum plugin ou use-case grava direto aqui (ver
- * ARCHITECTURE.md, "Nenhum plugin deve salvar logs diretamente").
+ * AuditLog — histórico somente-leitura. Quem escreve é sempre a
+ * implementação concreta assinando o EventBus — nenhum módulo grava
+ * audit_logs diretamente.
  */
 export interface AuditLog {
   list(limit?: number): readonly AuditEntry[];
+  listPersisted?(options?: {
+    readonly limit?: number;
+    readonly workspaceId?: string;
+  }): Promise<readonly PersistedAuditRecord[]>;
 }

@@ -273,23 +273,49 @@ Consequência prática de `@nexus/application` ser framework-agnostic (regra des
 
 **Reaproveitamento por plugins futuros**: Docker, Home Assistant e Tuya vão implementar `DeviceProvider` (reaproveitando `AttachDeviceProviderUseCase`, sem mudança, desde a seção 11) e registrar suas próprias `CapabilityDefinition`s no `onStart` (reaproveitando `CapabilityRegistry`, sem mudança) — o Dashboard mostra os botões certos automaticamente, porque `resolveDeviceActions` nunca olha o fabricante. Executar uma ação desses futuros providers passa pelo MESMO `ExecuteDeviceActionUseCase`, sem alteração — é por isso que "adicionar um fabricante novo" nunca mais deve exigir tocar em `apps/plugin-host` além da linha que instancia e registra o novo plugin.
 
+## 19. Auth, RBAC e Persistência (fundação de produto)
+
+Sprint que transforma o Core em plataforma persistente e autenticada.
+
+### Pacotes novos
+
+- **`@nexus/db`**: schema Drizzle + client Postgres (`createDb`). Tabelas: Better Auth (`user`/`session`/`account`/`verification`), workspaces, spaces, memberships, roles, permissions, devices, agent_registrations, api_keys, plugins, capabilities, events, audit_logs, notification_history, settings. Migrations em `packages/db/drizzle/`. Dev: `docker-compose.yml` + `bun run db:push`.
+- **`@nexus/auth`**: Better Auth no **plugin-host** (`/api/auth/*`) como autoridade única; `ensureDefaultWorkspace` + seed de permissions/roles (Owner/Admin/Operator/Viewer); bootstrap Owner via `POST /setup` quando `users=0`.
+
+### Domínio / Application / Infrastructure
+
+- Ports novos: `PermissionService`, repositórios (devices, agents, api keys, event store, memberships, roles, …), entidades Workspace/Space/User/Role/Membership/AgentRegistration/ApiKey.
+- Eventos novos no `SystemEvent`: `auth.*`, `agent.*`, `permission.denied`, `internal.error`.
+- Use-cases: agent approve/revoke/rotate, API keys, listagens admin, `ExecuteDeviceActionUseCase` agora exige `ActorContext` e chama `PermissionService.require` para `device.write` + `action.<type>` — **único** ponto de RBAC.
+- Infra: `PersistingEventBus`, `PostgresAuditLog` (único escritor de `audit_logs`), `PersistingDeviceRegistry`, `PostgresPermissionService`, repositórios Drizzle, hashing SHA-256 de tokens (`nxt_` agents / `nxk_` API keys).
+
+### Agent pairing
+
+- `AgentPairingBridge` no host: register sem token → `pending` (nunca auto-approve); com token válido → handoff ao `DeviceProvider`.
+- Protocolo: `token?`/`publicKey?` no `register`; Core → `registration-pending` | `registration-approved` | `registration-rejected`.
+- Agent Windows: persiste `agent-token`; só opera heartbeat/métricas após aprovação.
+
+### Dashboard
+
+- Middleware exige sessão; `/setup` e `/login`; páginas Users, Agents, Pending Agents, API Keys, Roles, Sessions, Audit.
+- React Query + Better Auth client apontando ao Core (`credentials: include`).
+- Server fetches ao Core encaminham cookies da sessão.
+
+### Checklist de audit (via Event Bus → PostgresAuditLog)
+
+Login, Logout, AuthFailure, AgentConnected, AgentApproved, AgentRevoked, ActionExecuted, PermissionDenied, PluginLoaded, PluginRemoved, InternalError.
+
+### Como adicionar Docker/HA/Linux depois
+
+Sem mudança estrutural: novo `DeviceProvider` + capabilities; Agent Linux/macOS reusa protocolo + pairing; novas actions = nova permission `action.*` no seed + capability do plugin. Auth/RBAC/persistência são transversais.
+
 ## Próximos passos (não feitos agora, de propósito)
 
-- **Autenticação no `AgentGateway`**: hoje qualquer processo que abrir o WebSocket é tratado como Agent válido — pendência de segurança registrada na seção 11, antes de qualquer exposição fora de `localhost`. A API HTTP da seção 13 também não tem autenticação (mesma lógica: só pensada para uso local/interno por enquanto), incluindo a nova `POST /devices/:id/actions` (seção 18) — hoje QUALQUER um que alcance o domínio do Core pode mandar `shutdown` num dispositivo real, sem nenhuma verificação. O protocolo de descoberta da seção 15 tem a mesma postura: qualquer um na rede local pode perguntar "onde está o Core?" e obter resposta. **Isso fica mais urgente com o deploy na nuvem (seção 16)**: hoje, qualquer pessoa que descobrir o domínio `wss://core.seudominio.com` pode se conectar como se fosse um Agent válido e registrar dispositivos falsos, e qualquer um pode ler `https://core.seudominio.com/devices` ou executar ações — não expor esse domínio antes de existir autenticação (token/API key no mínimo) é uma recomendação forte, não só uma nota de rodapé.
 - Integrações reais do Notification Center (seção 18): hoje só existe `ConsoleNotificationChannel` (loga e mais nada) — Discord/Telegram/WhatsApp/push/e-mail continuam sem implementação, de propósito.
 - Automações/rotinas reais usando o Scheduler (seção 18): hoje `InMemoryScheduler` existe e está instanciado em `apps/plugin-host`, mas nenhum job é agendado — não há UI nem caso de uso para criar uma automação ainda.
-- Coleta de payload pela UI para ações que exigem dado extra (ex.: `executeCommand`, que precisa de `payload.command`) — hoje esses botões ficam desabilitados no Dashboard (seção 18); a API já suporta `payload` desde o Action Dispatcher.
-- Persistência real do Audit Log (seção 18): hoje `InMemoryAuditLog` também esquece tudo ao reiniciar `apps/plugin-host`, mesma limitação já registrada abaixo para o `DeviceRegistry`.
-- Serviço Windows de verdade (`Local System`, inicia no boot antes de qualquer login) para `apps/agent-windows`, no lugar da Tarefa Agendada por usuário da seção 17 — cobriria também máquinas que reiniciam sem ninguém fazer login. Exigiria uma ferramenta externa (ex.: NSSM) ou um wrapper nativo (C#/Rust) usando a Service API do Windows, já que Bun/Node não oferecem isso nativamente.
-- Instalador com interface gráfica (em vez do `install.ps1` via PowerShell) — hoje já resolve o problema de "rodar comando toda vez", mas ainda é um script de linha de comando.
-- Funcionalidades do Windows explicitamente adiadas: screenshot, explorer, terminal remoto, transferência de arquivos, clipboard, processos, serviços, Wake On LAN, Remote Desktop, instalação de softwares.
-- Métricas mais detalhadas: disco por drive (`C:\`, `D:\`, ...) em vez de um único percentual agregado; CPU por núcleo.
-- Persistência real do `DeviceRegistry` (hoje `InMemoryDeviceRegistry` esquece tudo ao reiniciar `apps/plugin-host`, e o `AuditLog` da seção 18, sucessor do `EventLog` da seção 13, também é só em memória).
+- Fluxo completo de recuperação de senha por e-mail (schema/verification já preparados via Better Auth — seção 19).
 - `apps/plugin-host` implementando um `PluginSource` real (descoberta em disco de `packages/plugins/*`) em vez do array embutido usado nesta etapa.
-- Próximo `DeviceProvider` (Docker, Home Assistant, Tuya, Linux ou macOS) reaproveitando `AttachDeviceProviderUseCase` e o Capability System (seção 18) sem alteração — Linux/macOS reaproveitam também `@nexus/agent-protocol`/`AgentGateway`.
-- Entidade Espaço/Ambiente em `@nexus/domain` — quando existir, "Integrações" (seção 13) e um futuro agrupamento por Ambiente podem conviver, cada um mostrando uma dimensão diferente dos mesmos dispositivos.
-- Atualização ao vivo do Dashboard (WebSocket/SSE do browser para o Core) — hoje os dados só atualizam quando a página é recarregada, já que o fetch usa `cache: "no-store"` mas é feito uma vez por request do servidor.
-- Agregação histórica real para o gráfico de atividade (24h) — hoje continua mockado, mesmo com o resto do Dashboard já real.
-- Instalador/serviço Windows para `apps/agent-windows` (start automático no boot, sem janela de terminal visível) — hoje é só o `.exe` gerado na seção 14, rodando em primeiro plano.
-- Um bundler (ex.: `tsup`/`esbuild`) especificamente para `apps/plugin-host`, caso um dia ele precise ser distribuído como executável fora do servidor onde já roda via `bun run dev`/`start` — `apps/agent-windows` já resolveu isso via `bun build --compile` (seção 14).
-- Páginas reais em `apps/web` além do Dashboard.
+- Próximo `DeviceProvider` (Docker, Home Assistant, Tuya, Linux ou macOS) reaproveitando `AttachDeviceProviderUseCase`, Capability System, Auth/RBAC e pairing (seção 19) sem alteração estrutural.
+- Atualização ao vivo do Dashboard (WebSocket/SSE do browser para o Core).
+- Agregação histórica real para o gráfico de atividade (24h) — hoje continua mockado.
+- UI polish das páginas de admin (seção 19 priorizou funcionalidade).

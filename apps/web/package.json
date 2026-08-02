@@ -11,9 +11,12 @@
   },
   "dependencies": {
     "@nexus/application": "workspace:*",
+    "@nexus/auth": "workspace:*",
     "@nexus/domain": "workspace:*",
     "@nexus/infrastructure": "workspace:*",
     "@nexus/ui": "workspace:*",
+    "@tanstack/react-query": "^5.101.4",
+    "better-auth": "1.2.12",
     "lucide-react": "^1.28.0",
     "next": "16.2.12",
     "react": "19.2.4",
@@ -29,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "zod": "^4.4.3"
   }
 }

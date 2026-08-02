@@ -1,11 +1,19 @@
 import type { LucideIcon } from "lucide-react";
-import { Activity, Cpu, Layers, LayoutDashboard, Puzzle, Settings, Workflow } from "lucide-react";
-
-/**
- * Configuração estática da navegação do shell. Só "Dashboard" aponta para uma
- * rota real (app/page.tsx); o restante existe apenas para mostrar a forma do
- * sistema de navegação — nenhuma dessas páginas foi implementada ainda.
- */
+import {
+  Activity,
+  Cpu,
+  KeyRound,
+  Layers,
+  LayoutDashboard,
+  Puzzle,
+  ScrollText,
+  Server,
+  Settings,
+  Shield,
+  UserRound,
+  Users,
+  Workflow,
+} from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -33,6 +41,18 @@ export const navSections: NavSection[] = [
     items: [
       { label: "Automações", href: "#", icon: Workflow, implemented: false },
       { label: "Plugins", href: "#", icon: Puzzle, implemented: false },
+    ],
+  },
+  {
+    title: "Segurança",
+    items: [
+      { label: "Users", href: "/users", icon: Users, implemented: true },
+      { label: "Agents", href: "/agents", icon: Server, implemented: true },
+      { label: "Pending Agents", href: "/agents/pending", icon: Shield, implemented: true },
+      { label: "API Keys", href: "/api-keys", icon: KeyRound, implemented: true },
+      { label: "Roles", href: "/roles", icon: UserRound, implemented: true },
+      { label: "Sessions", href: "/sessions", icon: Activity, implemented: true },
+      { label: "Audit Logs", href: "/audit", icon: ScrollText, implemented: true },
     ],
   },
   {

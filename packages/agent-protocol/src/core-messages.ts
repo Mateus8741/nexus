@@ -13,7 +13,28 @@ export interface CoreActionCommandMessage {
   readonly payload?: AgentActionPayload;
 }
 
-export type CoreMessage = CoreActionCommandMessage;
+export interface CoreRegistrationPendingMessage {
+  readonly type: "registration-pending";
+  readonly agentId: string;
+}
+
+export interface CoreRegistrationApprovedMessage {
+  readonly type: "registration-approved";
+  readonly agentId: string;
+  readonly token: string;
+}
+
+export interface CoreRegistrationRejectedMessage {
+  readonly type: "registration-rejected";
+  readonly agentId: string;
+  readonly reason: string;
+}
+
+export type CoreMessage =
+  | CoreActionCommandMessage
+  | CoreRegistrationPendingMessage
+  | CoreRegistrationApprovedMessage
+  | CoreRegistrationRejectedMessage;
 
 export type CoreMessageType = CoreMessage["type"];
 
@@ -23,7 +44,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function isCoreMessage(value: unknown): value is CoreMessage {
   if (!isRecord(value)) return false;
-  if (value.type !== "action-command") return false;
-  if (typeof value.requestId !== "string" || value.requestId.length === 0) return false;
-  return isAgentActionType(value.action);
+
+  switch (value.type) {
+    case "action-command":
+      return (
+        typeof value.requestId === "string" &&
+        value.requestId.length > 0 &&
+        isAgentActionType(value.action)
+      );
+    case "registration-pending":
+      return typeof value.agentId === "string";
+    case "registration-approved":
+      return typeof value.agentId === "string" && typeof value.token === "string";
+    case "registration-rejected":
+      return typeof value.agentId === "string" && typeof value.reason === "string";
+    default:
+      return false;
+  }
 }

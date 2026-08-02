@@ -20,7 +20,10 @@
     "format:check": "biome format .",
     "check": "biome check --write .",
     "check:ci": "biome ci .",
-    "format:docs": "prettier --write \"**/*.{md,mdx}\""
+    "format:docs": "prettier --write \"**/*.{md,mdx}\"",
+    "db:generate": "bun run --filter @nexus/db generate",
+    "db:push": "bun run --filter @nexus/db push",
+    "db:studio": "bun run --filter @nexus/db studio"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.0",

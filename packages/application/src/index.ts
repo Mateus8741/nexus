@@ -1,14 +1,5 @@
 /**
  * @nexus/application — Camada de Aplicação
- *
- * Orquestra entidades e regras de @nexus/domain para cumprir casos de uso
- * concretos (ex.: "conectar um DeviceProvider ao DeviceRegistry", "registrar
- * dispositivo", "criar ambiente", "disparar automação").
- *
- * Regra de dependência: pode depender de @nexus/domain, mas NUNCA de
- * @nexus/infrastructure nem de qualquer framework. Esta camada define os
- * "ports" que a infraestrutura deve implementar (ex.: EventBus, Clock,
- * PluginRegistry) — a implementação concreta é injetada de fora.
  */
 
 export {
@@ -27,6 +18,31 @@ export {
   toDeviceStateDto,
 } from "./dto/device-state-dto";
 export { NotificationCenter } from "./services/notification-center";
+export {
+  ListAgentsUseCase,
+  ListApiKeysUseCase,
+  ListAuditLogsUseCase,
+  ListPersistedEventsUseCase,
+  ListRolesUseCase,
+  ListUsersUseCase,
+} from "./use-cases/admin-lists";
+export {
+  type ApproveAgentInput,
+  ApproveAgentUseCase,
+  MarkAgentConnectedUseCase,
+  type RegisterAgentInput,
+  RegisterAgentUseCase,
+  type RevokeAgentInput,
+  RevokeAgentUseCase,
+  type RotateAgentTokenInput,
+  RotateAgentTokenUseCase,
+} from "./use-cases/agent-registration";
+export {
+  type CreateApiKeyInput,
+  CreateApiKeyUseCase,
+  type RevokeApiKeyInput,
+  RevokeApiKeyUseCase,
+} from "./use-cases/api-keys";
 export { AttachDeviceProviderUseCase } from "./use-cases/attach-device-provider";
 export {
   type ExecuteDeviceActionInput,

@@ -4,6 +4,7 @@ import type { DeviceState } from "../value-objects/device-state";
 interface DeviceEventBase {
   readonly deviceId: string;
   readonly occurredAt: Date;
+  readonly workspaceId?: string;
 }
 
 export interface DeviceConnectedEvent extends DeviceEventBase {

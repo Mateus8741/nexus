@@ -25,6 +25,7 @@
  * NotificationCenter) vive em @nexus/application.
  */
 
+export * from "./auth";
 export * from "./capabilities";
 export * from "./entities";
 export * from "./events";

@@ -36,3 +36,7 @@ export function getConfigPath(): string {
 export function getAgentIdPath(): string {
   return path.join(getInstallDir(), "agent-id");
 }
+
+export function getAgentTokenPath(): string {
+  return path.join(getInstallDir(), "agent-token");
+}

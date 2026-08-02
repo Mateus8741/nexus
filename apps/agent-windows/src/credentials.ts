@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { readPersistedConfig, type PersistedCredentials } from "./config";
+import { type PersistedCredentials, readPersistedConfig } from "./config";
 
 const execFileAsync = promisify(execFile);
 

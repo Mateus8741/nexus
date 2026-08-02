@@ -1,17 +1,40 @@
 import {
+  ApproveAgentUseCase,
   AttachDeviceProviderUseCase,
+  CreateApiKeyUseCase,
   ExecuteDeviceActionUseCase,
+  ListAgentsUseCase,
+  ListApiKeysUseCase,
+  ListAuditLogsUseCase,
+  ListPersistedEventsUseCase,
+  ListRolesUseCase,
+  ListUsersUseCase,
+  MarkAgentConnectedUseCase,
   NotificationCenter,
+  RegisterAgentUseCase,
+  RevokeAgentUseCase,
+  RevokeApiKeyUseCase,
+  RotateAgentTokenUseCase,
 } from "@nexus/application";
+import { createAuth, ensureDefaultWorkspace, seedPermissions } from "@nexus/auth";
+import { createDb } from "@nexus/db";
 import type { DeviceProvider, SystemEvent } from "@nexus/domain";
 import {
   ConsoleNotificationChannel,
-  InMemoryAuditLog,
   InMemoryCapabilityRegistry,
   InMemoryDeviceProviderRegistry,
-  InMemoryDeviceRegistry,
   InMemoryEventBus,
   InMemoryScheduler,
+  PersistingDeviceRegistry,
+  PersistingEventBus,
+  PostgresAgentRegistrationRepository,
+  PostgresApiKeyRepository,
+  PostgresAuditLog,
+  PostgresDeviceRepository,
+  PostgresEventStore,
+  PostgresMembershipRepository,
+  PostgresPermissionService,
+  PostgresRoleRepository,
   TimerHealthMonitor,
   WebSocketAgentGateway,
 } from "@nexus/infrastructure";
@@ -23,63 +46,78 @@ import {
   type PluginSource,
 } from "@nexus/plugins-sdk";
 
+import { AgentPairingBridge } from "./agents/agent-pairing-bridge";
 import { DiscoveryResponder } from "./discovery/discovery-responder";
 import { createHttpServer } from "./http/server";
 import { createConsoleLogger } from "./runtime/console-logger";
 
-/**
- * @nexus/plugin-host — composition root do Nexus.
- *
- * Este é o ÚNICO arquivo do monorepo autorizado a conhecer, ao mesmo tempo,
- * uma abstração (PluginRegistry, DeviceRegistry, AgentGateway) e uma
- * implementação concreta dela (InMemoryDeviceRegistry, WebSocketAgentGateway)
- * — e o único que importa @nexus/plugin-windows diretamente. Todo o resto
- * do sistema (a própria classe WindowsDeviceProvider, o
- * AttachDeviceProviderUseCase, o DeviceRegistry) só enxerga interfaces.
- *
- * HTTP (API para o Dashboard) e WebSocket (Agents remotos) rodam na MESMA
- * porta/processo: o upgrade HTTP→WebSocket é anexado ao mesmo `http.Server`
- * que serve as rotas REST (ver WebSocketAgentGateway com `{ server }` em vez
- * de `{ port }`). Isso existe para caber atrás de um reverse proxy que só
- * expõe uma porta por domínio (ex.: Coolify/Traefik) — só uma porta para
- * abrir/mapear, em vez de duas.
- */
-
-// `PORT` é a convenção mais comum entre PaaS (Coolify, Heroku, Railway...);
-// `NEXUS_HTTP_PORT` continua valendo para quem prefere ser explícito.
 const PORT = Number(process.env.PORT ?? process.env.NEXUS_HTTP_PORT ?? 4700);
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://nexus:nexus@localhost:5432/nexus";
+const BETTER_AUTH_SECRET =
+  process.env.BETTER_AUTH_SECRET ?? "dev-only-change-me-nexus-auth-secret-32chars";
+const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL ?? `http://localhost:${PORT}`;
+const TRUSTED_ORIGINS = (
+  process.env.NEXUS_TRUSTED_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000"
+).split(",");
 
 async function bootstrap(): Promise<void> {
   const logger = createConsoleLogger("plugin-host");
 
-  // EventBus único do processo — TUDO que acontece no Core (eventos de
-  // dispositivo, ciclo de vida de plugin, registro de capability) passa por
-  // aqui. Ver ARCHITECTURE.md, "Event Bus".
-  const eventBus = new InMemoryEventBus<SystemEvent>();
+  const db = createDb({ connectionString: DATABASE_URL });
+  await seedPermissions(db);
+  const { workspaceId } = await ensureDefaultWorkspace(db);
 
-  const deviceRegistry = new InMemoryDeviceRegistry(eventBus);
+  const innerBus = new InMemoryEventBus<SystemEvent>();
+  const eventStore = new PostgresEventStore(db);
+  const eventBus = new PersistingEventBus(innerBus, eventStore, workspaceId);
+
+  const deviceRepository = new PostgresDeviceRepository(db);
+  const deviceRegistry = new PersistingDeviceRegistry(eventBus, deviceRepository, workspaceId);
+  await deviceRegistry.hydrate();
+
   const deviceProviderRegistry = new InMemoryDeviceProviderRegistry();
   const capabilityRegistry = new InMemoryCapabilityRegistry();
   const timerHealthMonitor = new TimerHealthMonitor();
-  // Só instanciado nesta etapa (infra "provada", sem nenhum job real
-  // agendado ainda) — ver ARCHITECTURE.md, "Scheduler".
   const scheduler = new InMemoryScheduler();
-  const notificationCenter = new NotificationCenter();
-  notificationCenter.registerChannel(new ConsoleNotificationChannel());
-  // Nenhum job real agendado ainda (ver comentário acima) — referenciado aqui
-  // só para deixar explícito que a variável existe de propósito, não por
-  // descuido.
   void scheduler;
 
-  // AuditLog substitui o antigo EventLog: assina o EventBus inteiro (não só
-  // eventos de dispositivo), então plugin.loaded/plugin.unloaded aparecem no
-  // mesmo histórico que device.connected/etc.
-  const auditLog = new InMemoryAuditLog(eventBus);
+  const notificationCenter = new NotificationCenter();
+  notificationCenter.registerChannel(new ConsoleNotificationChannel());
+
+  const auditLog = new PostgresAuditLog(db, eventBus);
+  const permissionService = new PostgresPermissionService(db, eventBus);
+  const memberships = new PostgresMembershipRepository(db);
+  const roles = new PostgresRoleRepository(db);
+  const agents = new PostgresAgentRegistrationRepository(db);
+  const apiKeys = new PostgresApiKeyRepository(db);
+
+  const auth = createAuth({
+    db,
+    baseURL: BETTER_AUTH_URL,
+    secret: BETTER_AUTH_SECRET,
+    trustedOrigins: TRUSTED_ORIGINS,
+  });
 
   const executeDeviceAction = new ExecuteDeviceActionUseCase(
     deviceRegistry,
     deviceProviderRegistry,
+    permissionService,
+    eventBus,
   );
+
+  const registerAgent = new RegisterAgentUseCase(agents, eventBus);
+  const approveAgent = new ApproveAgentUseCase(agents, permissionService, eventBus);
+  const revokeAgent = new RevokeAgentUseCase(agents, permissionService, eventBus);
+  const rotateAgentToken = new RotateAgentTokenUseCase(agents, permissionService);
+  const markConnected = new MarkAgentConnectedUseCase(agents, eventBus);
+  const createApiKey = new CreateApiKeyUseCase(apiKeys, permissionService);
+  const revokeApiKey = new RevokeApiKeyUseCase(apiKeys, permissionService);
+  const listUsers = new ListUsersUseCase(memberships, permissionService);
+  const listRoles = new ListRolesUseCase(roles, permissionService);
+  const listAgents = new ListAgentsUseCase(agents, permissionService);
+  const listApiKeys = new ListApiKeysUseCase(apiKeys, permissionService);
+  const listAudit = new ListAuditLogsUseCase(auditLog, permissionService);
+  const listEvents = new ListPersistedEventsUseCase(eventStore, permissionService);
 
   const pluginRegistry = new PluginRegistry();
   const pluginLoader = new PluginLoader(pluginRegistry);
@@ -89,37 +127,68 @@ async function bootstrap(): Promise<void> {
     );
   });
 
-  // `providers` é preenchido logo abaixo, DEPOIS que o WindowsDeviceProvider
-  // existir (que por sua vez depende do agentGateway, que depende do
-  // httpServer) — ainda assim antes do servidor começar a aceitar conexões
-  // (`.listen()`), então a rota GET /providers nunca vê o array vazio em
-  // produção.
   const providers: DeviceProvider[] = [];
+  const pairingRef: { current: AgentPairingBridge | null } = { current: null };
+
+  const resolveActorDeps = {
+    auth,
+    memberships,
+    apiKeys,
+    eventBus,
+    defaultWorkspaceId: workspaceId,
+  };
 
   const httpServer = createHttpServer({
+    db,
+    auth,
+    resolveActorDeps,
     deviceRegistry,
     pluginRegistry,
     providers,
     auditLog,
     capabilityRegistry,
     executeDeviceAction,
+    permissionService,
+    eventBus,
+    listUsers,
+    listRoles,
+    listAgents,
+    listApiKeys,
+    listAudit,
+    listEvents,
+    approveAgent,
+    revokeAgent,
+    rotateAgentToken,
+    createApiKey,
+    revokeApiKey,
+    get pairingBridge() {
+      if (!pairingRef.current) {
+        throw new Error("AgentPairingBridge ainda não inicializado");
+      }
+      return pairingRef.current;
+    },
+    defaultWorkspaceId: workspaceId,
   });
 
-  // O AgentGateway "pluga" no upgrade HTTP→WebSocket do MESMO servidor —
-  // ver comentário no topo do arquivo.
   const agentGateway = new WebSocketAgentGateway({ server: httpServer });
+  const pairingBridge = new AgentPairingBridge(
+    agentGateway,
+    workspaceId,
+    registerAgent,
+    markConnected,
+    agents,
+    eventBus,
+  );
+  pairingRef.current = pairingBridge;
 
   const { plugin: windowsPlugin, provider: windowsProvider } = createWindowsPlugin({
-    agentGateway,
+    agentGateway: pairingBridge,
     healthMonitor: timerHealthMonitor,
     capabilityRegistry,
   });
   providers.push(windowsProvider);
   deviceProviderRegistry.register(windowsProvider);
 
-  // Nesta etapa o Windows plugin é "embutido" (conhecido de antemão), não
-  // descoberto de disco/rede — é isso que um PluginSource real (varrendo
-  // packages/plugins/* em disco) faria no lugar disto no futuro.
   const source: PluginSource = {
     discover(): PluginCandidate[] {
       return [{ source: "built-in:@nexus/plugin-windows", value: windowsPlugin }];
@@ -131,25 +200,16 @@ async function bootstrap(): Promise<void> {
     logger.error(`Falha ao carregar plugin de "${rejection.source}": ${rejection.reason}`);
   }
 
-  // Único ponto de log de eventos: assina o EventBus inteiro (não só o
-  // deviceRegistry) — é o que evidencia, em runtime, que device.*,
-  // plugin.loaded/unloaded e capability.registered passam todos pelo MESMO
-  // barramento (ver ARCHITECTURE.md, "Event Bus"). Substitui o antigo
-  // `deviceRegistry.subscribe(...)` (que só via eventos de dispositivo) para
-  // não duplicar log da mesma ocorrência em dois assinantes.
   eventBus.subscribe((event) => {
-    // Todo SystemEvent que não é DeviceEvent (plugin.loaded/unloaded,
-    // capability.registered) carrega `pluginId` — não sobra um terceiro
-    // formato a tratar hoje.
     if ("deviceId" in event) {
       logger.info(`[event-bus] ${event.type} — dispositivo ${event.deviceId}`);
-    } else {
+    } else if ("pluginId" in event) {
       logger.info(`[event-bus] ${event.type} — plugin ${event.pluginId}`);
+    } else {
+      logger.info(`[event-bus] ${event.type}`);
     }
   });
 
-  // Liga o provider ao registry ANTES de iniciar o plugin, para não perder
-  // nenhum evento emitido logo no onStart (ex.: reconexões imediatas).
   await attachDeviceProvider.attach(windowsProvider);
 
   for (const plugin of loadResult.loaded) {
@@ -161,19 +221,17 @@ async function bootstrap(): Promise<void> {
       type: "plugin.loaded",
       pluginId: plugin.manifest.id,
       occurredAt: new Date(),
+      workspaceId,
     });
   }
 
   httpServer.listen(PORT);
 
-  // Responde em UDP broadcast a Agents perguntando "onde está o Core?" —
-  // só é útil quando Agent e Core estão na mesma rede local (broadcast não
-  // atravessa a internet); num deploy na nuvem, o Agent sempre precisa de
-  // NEXUS_CORE_URL manual (wss://...) — ver apps/agent-windows/src/discovery.ts.
   const discoveryResponder = new DiscoveryResponder({ port: PORT });
   discoveryResponder.start();
 
-  logger.info(`Pronto. HTTP + WebSocket de Agents em http://localhost:${PORT} (mesma porta)`);
+  logger.info(`Pronto. HTTP + WebSocket autenticados em http://localhost:${PORT}`);
+  logger.info(`Workspace default: ${workspaceId}`);
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Recebido ${signal}, encerrando...`);
@@ -188,8 +246,10 @@ async function bootstrap(): Promise<void> {
         type: "plugin.unloaded",
         pluginId: plugin.manifest.id,
         occurredAt: new Date(),
+        workspaceId,
       });
     }
+    await eventBus.flush();
     await agentGateway.close();
     httpServer.close();
     await discoveryResponder.close();
