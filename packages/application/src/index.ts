@@ -26,4 +26,9 @@ export {
   fromDeviceStateDto,
   toDeviceStateDto,
 } from "./dto/device-state-dto";
+export { NotificationCenter } from "./services/notification-center";
 export { AttachDeviceProviderUseCase } from "./use-cases/attach-device-provider";
+export {
+  type ExecuteDeviceActionInput,
+  ExecuteDeviceActionUseCase,
+} from "./use-cases/execute-device-action";

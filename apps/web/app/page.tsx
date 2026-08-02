@@ -8,6 +8,7 @@ import { ProviderOverview } from "@/components/dashboard/provider-overview";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { mockActivitySeries } from "@/lib/mocks/activity-series";
 import {
+  fetchCapabilities,
   fetchDevices,
   fetchEvents,
   fetchPlugins,
@@ -37,11 +38,12 @@ function deviceNameFactory(devices: Device[]) {
  * página nunca quebra, só mostra "nenhum dado ainda".
  */
 export default async function Home() {
-  const [devices, events, plugins, providers] = await Promise.all([
+  const [devices, events, plugins, providers, capabilities] = await Promise.all([
     fetchDevices(),
     fetchEvents(),
     fetchPlugins(),
     fetchProviders(),
+    fetchCapabilities(),
   ]);
 
   const onlineDevices = devices.filter((device) => device.state.status === "online").length;
@@ -99,7 +101,7 @@ export default async function Home() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <h2 className="mb-3 text-sm font-medium text-foreground">Dispositivos</h2>
-          <DeviceTable devices={devices} providerName={providerName} />
+          <DeviceTable devices={devices} providerName={providerName} capabilities={capabilities} />
         </div>
         <div>
           <h2 className="mb-3 text-sm font-medium text-foreground">Atividade recente</h2>

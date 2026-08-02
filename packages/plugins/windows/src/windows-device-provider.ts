@@ -13,20 +13,18 @@ import type {
   DeviceProvider,
   DeviceProviderDescriptor,
   DeviceState,
+  HealthMonitor,
 } from "@nexus/domain";
 import type { AgentConnection, AgentGateway } from "@nexus/plugins-sdk";
 
 const DESCRIPTOR: DeviceProviderDescriptor = { id: "nexus.windows", name: "Windows" };
 
-/** O Agent deve mandar heartbeat/metrics bem mais rápido que isso (ver apps/agent-windows) — a margem existe para tolerar um heartbeat perdido isolado. */
-const HEARTBEAT_TIMEOUT_MS = 30_000;
 /** Quanto tempo esperar por um `action-result` antes de desistir. */
 const ACTION_TIMEOUT_MS = 15_000;
 
 interface TrackedDevice {
   device: Device;
   connection: AgentConnection;
-  heartbeatTimer: ReturnType<typeof setTimeout>;
 }
 
 interface PendingAction {
@@ -47,6 +45,12 @@ type DeviceEventListener = (event: DeviceEvent) => void;
  * para este provider. `agentId` (vindo do Agent, persistido localmente por
  * ele) é usado como Device.id, garantindo que reconexões sejam reconhecidas
  * como o mesmo dispositivo.
+ *
+ * O rastreamento de heartbeat/timeout é delegado a um HealthMonitor
+ * injetado (@nexus/domain) em vez de implementado aqui — ver
+ * ARCHITECTURE.md, "Health Service". Este provider só decide O QUE fazer
+ * quando o timeout dispara (marcar offline, emitir evento); o mecanismo de
+ * timer em si é compartilhado com qualquer plugin futuro.
  */
 export class WindowsDeviceProvider implements DeviceProvider {
   readonly descriptor = DESCRIPTOR;
@@ -55,7 +59,10 @@ export class WindowsDeviceProvider implements DeviceProvider {
   private readonly pendingActions = new Map<string, PendingAction>();
   private readonly listeners = new Set<DeviceEventListener>();
 
-  constructor(agentGateway: AgentGateway) {
+  constructor(
+    agentGateway: AgentGateway,
+    private readonly healthMonitor: HealthMonitor,
+  ) {
     agentGateway.onConnection((connection) => {
       connection.onMessage((raw) => this.handleMessage(connection, raw));
       connection.onClose(() => this.handleConnectionClosed(connection));
@@ -151,8 +158,6 @@ export class WindowsDeviceProvider implements DeviceProvider {
 
     const deviceId = message.agentId;
     const now = new Date();
-    const previous = this.tracked.get(deviceId);
-    if (previous) clearTimeout(previous.heartbeatTimer);
 
     const device: Device = {
       id: deviceId,
@@ -177,11 +182,8 @@ export class WindowsDeviceProvider implements DeviceProvider {
       },
     };
 
-    this.tracked.set(deviceId, {
-      device,
-      connection,
-      heartbeatTimer: this.scheduleHeartbeatTimeout(deviceId),
-    });
+    this.tracked.set(deviceId, { device, connection });
+    this.healthMonitor.heartbeat(deviceId, () => this.handleHeartbeatTimeout(deviceId));
 
     this.emit({ type: "device.connected", deviceId, occurredAt: now });
   }
@@ -189,13 +191,13 @@ export class WindowsDeviceProvider implements DeviceProvider {
   private handleHeartbeat(agentId: string): void {
     const entry = this.tracked.get(agentId);
     if (!entry) return; // heartbeat de um agent que nunca fez register — ignorado
-    this.resetHeartbeatTimer(agentId, entry);
+    this.healthMonitor.heartbeat(agentId, () => this.handleHeartbeatTimeout(agentId));
   }
 
   private handleMetrics(agentId: string, metrics: AgentMetricsSnapshot): void {
     const entry = this.tracked.get(agentId);
     if (!entry) return;
-    this.resetHeartbeatTimer(agentId, entry);
+    this.healthMonitor.heartbeat(agentId, () => this.handleHeartbeatTimeout(agentId));
 
     const now = new Date();
     const previousState = entry.device.state;
@@ -232,15 +234,25 @@ export class WindowsDeviceProvider implements DeviceProvider {
   private handleConnectionClosed(connection: AgentConnection): void {
     for (const [deviceId, entry] of this.tracked) {
       if (entry.connection === connection) {
+        // Desconexão explícita (socket fechado) — o HealthMonitor não
+        // precisa mais rastrear este dispositivo; sem isto, o timer de
+        // timeout ainda pendente dispararia depois, tentando marcar
+        // offline de novo (markOffline() é idempotente, mas o
+        // stopTracking evita o timer órfão desde já).
+        this.healthMonitor.stopTracking(deviceId);
         this.markOffline(deviceId, entry, "connection-closed");
         return;
       }
     }
   }
 
+  private handleHeartbeatTimeout(deviceId: string): void {
+    const entry = this.tracked.get(deviceId);
+    if (entry) this.markOffline(deviceId, entry, "heartbeat-timeout");
+  }
+
   private markOffline(deviceId: string, entry: TrackedDevice, reason: string): void {
     if (entry.device.state.status === "offline") return; // já offline, evita evento duplicado
-    clearTimeout(entry.heartbeatTimer);
 
     const now = new Date();
     const previousState = entry.device.state;
@@ -248,17 +260,5 @@ export class WindowsDeviceProvider implements DeviceProvider {
     entry.device = { ...entry.device, state: currentState };
 
     this.emit({ type: "device.disconnected", deviceId, occurredAt: now, reason });
-  }
-
-  private scheduleHeartbeatTimeout(deviceId: string): ReturnType<typeof setTimeout> {
-    return setTimeout(() => {
-      const entry = this.tracked.get(deviceId);
-      if (entry) this.markOffline(deviceId, entry, "heartbeat-timeout");
-    }, HEARTBEAT_TIMEOUT_MS);
-  }
-
-  private resetHeartbeatTimer(deviceId: string, entry: TrackedDevice): void {
-    clearTimeout(entry.heartbeatTimer);
-    entry.heartbeatTimer = this.scheduleHeartbeatTimeout(deviceId);
   }
 }

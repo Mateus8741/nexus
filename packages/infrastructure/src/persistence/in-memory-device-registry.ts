@@ -1,6 +1,23 @@
-import type { Device, DeviceEvent, DeviceRegistry, DeviceState } from "@nexus/domain";
+import type {
+  Device,
+  DeviceEvent,
+  DeviceRegistry,
+  DeviceState,
+  EventBus,
+  SystemEvent,
+} from "@nexus/domain";
 
-type DeviceRegistryListener = (event: DeviceEvent) => void;
+const DEVICE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "device.connected",
+  "device.disconnected",
+  "device.state-changed",
+  "device.action-executed",
+  "device.error",
+]);
+
+function isDeviceEvent(event: SystemEvent): event is DeviceEvent {
+  return DEVICE_EVENT_TYPES.has(event.type);
+}
 
 /**
  * Implementação concreta, em memória, de DeviceRegistry (@nexus/domain).
@@ -14,10 +31,19 @@ type DeviceRegistryListener = (event: DeviceEvent) => void;
  * reenviarem `register`). Trocar por uma versão persistida no futuro não
  * deve exigir mudar nenhum consumidor, já que eles só conhecem a interface
  * DeviceRegistry.
+ *
+ * `notify`/`subscribe` delegam para um EventBus injetado em vez de manter
+ * uma lista de ouvintes própria (ver ARCHITECTURE.md, "Event Bus") — isso
+ * é o que garante que eventos de dispositivo passem pelo MESMO barramento
+ * usado por eventos de plugin/capability, em vez de um canal paralelo.
+ * `subscribe()` filtra o stream do bus para só repassar DeviceEvent aos
+ * assinantes (o bus também carrega PluginLoadedEvent/etc., que não fazem
+ * sentido para quem assina especificamente este registry).
  */
 export class InMemoryDeviceRegistry implements DeviceRegistry {
   private readonly devices = new Map<string, Device>();
-  private readonly listeners = new Set<DeviceRegistryListener>();
+
+  constructor(private readonly eventBus: EventBus<SystemEvent>) {}
 
   register(device: Device): void {
     this.devices.set(device.id, device);
@@ -53,19 +79,13 @@ export class InMemoryDeviceRegistry implements DeviceRegistry {
     this.devices.set(deviceId, { ...device, state });
   }
 
-  /**
-   * O registry só repassa eventos — quem os produz é o DeviceProvider
-   * conectado a ele (via AttachDeviceProviderUseCase). Isso mantém este
-   * registry livre de conhecer qualquer detalhe de Windows/Docker/etc.
-   */
-  subscribe(listener: DeviceRegistryListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  subscribe(listener: (event: DeviceEvent) => void): () => void {
+    return this.eventBus.subscribe((event) => {
+      if (isDeviceEvent(event)) listener(event);
+    });
   }
 
   notify(event: DeviceEvent): void {
-    for (const listener of this.listeners) {
-      listener(event);
-    }
+    this.eventBus.publish(event);
   }
 }

@@ -7,3 +7,11 @@ export type {
   DeviceEventType,
   DeviceStateChangedEvent,
 } from "./device-event";
+export type { EventBus } from "./event-bus";
+export type {
+  CapabilityRegisteredEvent,
+  PluginLoadedEvent,
+  PluginUnloadedEvent,
+  SystemEvent,
+  SystemEventType,
+} from "./system-event";

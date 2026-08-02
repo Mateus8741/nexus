@@ -1,3 +1,4 @@
+import type { CapabilityDefinition, CapabilityRegistry, HealthMonitor } from "@nexus/domain";
 import type { AgentGateway } from "@nexus/plugins-sdk";
 import {
   assertPluginManifest,
@@ -28,6 +29,10 @@ export { WindowsDeviceProvider } from "./windows-device-provider";
 
 export interface CreateWindowsPluginOptions {
   readonly agentGateway: AgentGateway;
+  /** Rastreamento de heartbeat/timeout genérico (ver ARCHITECTURE.md, "Health Service") — este plugin não implementa seu próprio timer. */
+  readonly healthMonitor: HealthMonitor;
+  /** Onde este plugin registra o SIGNIFICADO das capabilities que declara em `Device.capabilities` (ver windows-device-provider.ts). */
+  readonly capabilityRegistry: CapabilityRegistry;
 }
 
 export interface WindowsPluginBundle {
@@ -36,16 +41,47 @@ export interface WindowsPluginBundle {
 }
 
 /**
+ * Definições das Capabilities que este plugin expõe — precisam bater com
+ * as chaves/ações declaradas em `Device.capabilities` dentro de
+ * windows-device-provider.ts. Registradas no CapabilityRegistry central no
+ * `onStart`, não por dispositivo: são metadados de TIPO (o que "restart"
+ * significa), não de instância.
+ */
+const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
+  {
+    key: "power-control",
+    label: "Controle de energia",
+    actions: [
+      { type: "shutdown", label: "Desligar" },
+      { type: "restart", label: "Reiniciar" },
+      { type: "lock", label: "Bloquear" },
+    ],
+  },
+  {
+    key: "remote-command",
+    label: "Comando remoto",
+    actions: [
+      { type: "executeCommand", label: "Executar comando", payloadSchema: { command: "string" } },
+    ],
+  },
+  { key: "metrics", label: "Métricas" },
+];
+
+/**
  * Composition-friendly de propósito: não há singleton nem estado global
  * neste módulo. Quem monta o Core (apps/plugin-host) decide quando e com
- * qual AgentGateway concreto instanciar o plugin.
+ * qual AgentGateway/HealthMonitor/CapabilityRegistry concretos instanciar
+ * o plugin.
  */
 export function createWindowsPlugin(options: CreateWindowsPluginOptions): WindowsPluginBundle {
-  const provider = new WindowsDeviceProvider(options.agentGateway);
+  const provider = new WindowsDeviceProvider(options.agentGateway, options.healthMonitor);
 
   const plugin: Plugin = definePlugin({
     manifest,
     onStart(context) {
+      for (const definition of CAPABILITY_DEFINITIONS) {
+        options.capabilityRegistry.register(definition, manifest.id);
+      }
       context.logger.info("Windows plugin iniciado — aguardando conexões de Agents.");
     },
     onStop(context) {

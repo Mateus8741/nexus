@@ -1,6 +1,20 @@
-import { AttachDeviceProviderUseCase } from "@nexus/application";
-import type { DeviceEvent, DeviceProvider } from "@nexus/domain";
-import { InMemoryDeviceRegistry, WebSocketAgentGateway } from "@nexus/infrastructure";
+import {
+  AttachDeviceProviderUseCase,
+  ExecuteDeviceActionUseCase,
+  NotificationCenter,
+} from "@nexus/application";
+import type { DeviceProvider, SystemEvent } from "@nexus/domain";
+import {
+  ConsoleNotificationChannel,
+  InMemoryAuditLog,
+  InMemoryCapabilityRegistry,
+  InMemoryDeviceProviderRegistry,
+  InMemoryDeviceRegistry,
+  InMemoryEventBus,
+  InMemoryScheduler,
+  TimerHealthMonitor,
+  WebSocketAgentGateway,
+} from "@nexus/infrastructure";
 import { createWindowsPlugin } from "@nexus/plugin-windows";
 import {
   type PluginCandidate,
@@ -10,7 +24,6 @@ import {
 } from "@nexus/plugins-sdk";
 
 import { DiscoveryResponder } from "./discovery/discovery-responder";
-import { EventLog } from "./http/event-log";
 import { createHttpServer } from "./http/server";
 import { createConsoleLogger } from "./runtime/console-logger";
 
@@ -39,7 +52,35 @@ const PORT = Number(process.env.PORT ?? process.env.NEXUS_HTTP_PORT ?? 4700);
 async function bootstrap(): Promise<void> {
   const logger = createConsoleLogger("plugin-host");
 
-  const deviceRegistry = new InMemoryDeviceRegistry();
+  // EventBus único do processo — TUDO que acontece no Core (eventos de
+  // dispositivo, ciclo de vida de plugin, registro de capability) passa por
+  // aqui. Ver ARCHITECTURE.md, "Event Bus".
+  const eventBus = new InMemoryEventBus<SystemEvent>();
+
+  const deviceRegistry = new InMemoryDeviceRegistry(eventBus);
+  const deviceProviderRegistry = new InMemoryDeviceProviderRegistry();
+  const capabilityRegistry = new InMemoryCapabilityRegistry();
+  const timerHealthMonitor = new TimerHealthMonitor();
+  // Só instanciado nesta etapa (infra "provada", sem nenhum job real
+  // agendado ainda) — ver ARCHITECTURE.md, "Scheduler".
+  const scheduler = new InMemoryScheduler();
+  const notificationCenter = new NotificationCenter();
+  notificationCenter.registerChannel(new ConsoleNotificationChannel());
+  // Nenhum job real agendado ainda (ver comentário acima) — referenciado aqui
+  // só para deixar explícito que a variável existe de propósito, não por
+  // descuido.
+  void scheduler;
+
+  // AuditLog substitui o antigo EventLog: assina o EventBus inteiro (não só
+  // eventos de dispositivo), então plugin.loaded/plugin.unloaded aparecem no
+  // mesmo histórico que device.connected/etc.
+  const auditLog = new InMemoryAuditLog(eventBus);
+
+  const executeDeviceAction = new ExecuteDeviceActionUseCase(
+    deviceRegistry,
+    deviceProviderRegistry,
+  );
+
   const pluginRegistry = new PluginRegistry();
   const pluginLoader = new PluginLoader(pluginRegistry);
   const attachDeviceProvider = new AttachDeviceProviderUseCase(deviceRegistry, (error, event) => {
@@ -48,15 +89,21 @@ async function bootstrap(): Promise<void> {
     );
   });
 
-  // EventLog só depende do deviceRegistry — pode existir desde já. `providers`
-  // é preenchido logo abaixo, DEPOIS que o WindowsDeviceProvider existir
-  // (que por sua vez depende do agentGateway, que depende do httpServer) —
-  // ainda assim antes do servidor começar a aceitar conexões (`.listen()`),
-  // então a rota GET /providers nunca vê o array vazio em produção.
-  const eventLog = new EventLog(deviceRegistry);
+  // `providers` é preenchido logo abaixo, DEPOIS que o WindowsDeviceProvider
+  // existir (que por sua vez depende do agentGateway, que depende do
+  // httpServer) — ainda assim antes do servidor começar a aceitar conexões
+  // (`.listen()`), então a rota GET /providers nunca vê o array vazio em
+  // produção.
   const providers: DeviceProvider[] = [];
 
-  const httpServer = createHttpServer({ deviceRegistry, pluginRegistry, providers, eventLog });
+  const httpServer = createHttpServer({
+    deviceRegistry,
+    pluginRegistry,
+    providers,
+    auditLog,
+    capabilityRegistry,
+    executeDeviceAction,
+  });
 
   // O AgentGateway "pluga" no upgrade HTTP→WebSocket do MESMO servidor —
   // ver comentário no topo do arquivo.
@@ -64,8 +111,11 @@ async function bootstrap(): Promise<void> {
 
   const { plugin: windowsPlugin, provider: windowsProvider } = createWindowsPlugin({
     agentGateway,
+    healthMonitor: timerHealthMonitor,
+    capabilityRegistry,
   });
   providers.push(windowsProvider);
+  deviceProviderRegistry.register(windowsProvider);
 
   // Nesta etapa o Windows plugin é "embutido" (conhecido de antemão), não
   // descoberto de disco/rede — é isso que um PluginSource real (varrendo
@@ -81,8 +131,21 @@ async function bootstrap(): Promise<void> {
     logger.error(`Falha ao carregar plugin de "${rejection.source}": ${rejection.reason}`);
   }
 
-  deviceRegistry.subscribe((event: DeviceEvent) => {
-    logger.info(`[device-registry] ${event.type} — dispositivo ${event.deviceId}`);
+  // Único ponto de log de eventos: assina o EventBus inteiro (não só o
+  // deviceRegistry) — é o que evidencia, em runtime, que device.*,
+  // plugin.loaded/unloaded e capability.registered passam todos pelo MESMO
+  // barramento (ver ARCHITECTURE.md, "Event Bus"). Substitui o antigo
+  // `deviceRegistry.subscribe(...)` (que só via eventos de dispositivo) para
+  // não duplicar log da mesma ocorrência em dois assinantes.
+  eventBus.subscribe((event) => {
+    // Todo SystemEvent que não é DeviceEvent (plugin.loaded/unloaded,
+    // capability.registered) carrega `pluginId` — não sobra um terceiro
+    // formato a tratar hoje.
+    if ("deviceId" in event) {
+      logger.info(`[event-bus] ${event.type} — dispositivo ${event.deviceId}`);
+    } else {
+      logger.info(`[event-bus] ${event.type} — plugin ${event.pluginId}`);
+    }
   });
 
   // Liga o provider ao registry ANTES de iniciar o plugin, para não perder
@@ -94,6 +157,11 @@ async function bootstrap(): Promise<void> {
     pluginRegistry.setState(plugin.manifest.id, "starting");
     await plugin.onStart({ logger: pluginLogger, config: plugin.manifest.config ?? {} });
     pluginRegistry.setState(plugin.manifest.id, "started");
+    eventBus.publish({
+      type: "plugin.loaded",
+      pluginId: plugin.manifest.id,
+      occurredAt: new Date(),
+    });
   }
 
   httpServer.listen(PORT);
@@ -116,6 +184,11 @@ async function bootstrap(): Promise<void> {
         config: plugin.manifest.config ?? {},
       });
       pluginRegistry.setState(plugin.manifest.id, "stopped");
+      eventBus.publish({
+        type: "plugin.unloaded",
+        pluginId: plugin.manifest.id,
+        occurredAt: new Date(),
+      });
     }
     await agentGateway.close();
     httpServer.close();

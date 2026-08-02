@@ -42,6 +42,7 @@
         "@types/node": "^20",
         "tsx": "^4.19.0",
         "typescript": "^5",
+        "ws": "8",
       },
     },
     "apps/web": {

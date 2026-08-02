@@ -4,7 +4,7 @@ import {
   fromDeviceDto,
   fromDeviceEventDto,
 } from "@nexus/application";
-import type { Device, DeviceEvent } from "@nexus/domain";
+import type { CapabilityDefinition, Device, DeviceEvent } from "@nexus/domain";
 
 /**
  * Cliente HTTP para `apps/plugin-host` — o processo que de fato conversa com
@@ -79,5 +79,62 @@ export async function fetchProviders(): Promise<ProviderSummaryDto[]> {
   } catch (error) {
     console.warn("[nexus-client] falha ao buscar /providers, seguindo com lista vazia:", error);
     return [];
+  }
+}
+
+/**
+ * Dicionário de todas as Capabilities conhecidas pelo Core (o que cada
+ * `key` de `Device.capabilities` *significa* — label, descrição, ações).
+ * Usado pela UI junto com `resolveDeviceActions` (@nexus/domain) para
+ * decidir que botões oferecer por dispositivo, sem nunca checar `kind`.
+ */
+export async function fetchCapabilities(): Promise<CapabilityDefinition[]> {
+  try {
+    return await fetchJson<CapabilityDefinition[]>("/capabilities");
+  } catch (error) {
+    console.warn("[nexus-client] falha ao buscar /capabilities, seguindo com lista vazia:", error);
+    return [];
+  }
+}
+
+export interface DeviceActionInput {
+  readonly type: string;
+  readonly payload?: Record<string, unknown>;
+}
+
+export interface DeviceActionOutcome {
+  readonly success: boolean;
+  readonly error?: string;
+}
+
+/**
+ * Dispara uma DeviceAction (ex.: `{ type: "restart" }`) no plugin-host.
+ * Diferente das outras funções deste arquivo, é uma mutação — não deve ser
+ * chamada direto de um Server Component durante o render; use-a a partir de
+ * um Server Action (ver lib/actions/device-actions.ts), que é o que os
+ * Client Components (botões de ação em device-table.tsx) efetivamente
+ * chamam.
+ */
+export async function executeDeviceAction(
+  deviceId: string,
+  action: DeviceActionInput,
+): Promise<DeviceActionOutcome> {
+  try {
+    const response = await fetch(`${BASE_URL}/devices/${deviceId}/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`POST /devices/${deviceId}/actions retornou ${response.status}`);
+    }
+
+    const result = (await response.json()) as DeviceActionOutcome;
+    return { success: result.success, error: result.error };
+  } catch (error) {
+    console.warn(`[nexus-client] falha ao executar ação "${action.type}" em ${deviceId}:`, error);
+    return { success: false, error: "Falha de comunicação com o plugin-host." };
   }
 }

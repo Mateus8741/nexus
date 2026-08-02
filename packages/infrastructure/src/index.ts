@@ -14,8 +14,18 @@
  * Consumida por apps/plugin-host (composition root).
  */
 
+export { ConsoleNotificationChannel } from "./adapters/console-notification-channel";
+export { InMemoryEventBus } from "./messaging/in-memory-event-bus";
 export {
   WebSocketAgentGateway,
   type WebSocketAgentGatewayOptions,
 } from "./messaging/websocket-agent-gateway";
+export { InMemoryAuditLog } from "./persistence/in-memory-audit-log";
+export { InMemoryCapabilityRegistry } from "./persistence/in-memory-capability-registry";
+export { InMemoryDeviceProviderRegistry } from "./persistence/in-memory-device-provider-registry";
 export { InMemoryDeviceRegistry } from "./persistence/in-memory-device-registry";
+export { InMemoryScheduler } from "./services/in-memory-scheduler";
+export {
+  TimerHealthMonitor,
+  type TimerHealthMonitorOptions,
+} from "./services/timer-health-monitor";
