@@ -19,10 +19,14 @@ function extractActor(event: SystemEvent): {
     case "agent.revoked":
       return { actorType: "user", actorUserId: event.revokedByUserId };
     case "permission.denied":
-      return { actorType: event.actorType, actorUserId: event.actorId };
+      // actorId só é user.id quando actorType === "user"; agentIds não têm FK em "user".
+      return {
+        actorType: event.actorType,
+        actorUserId: event.actorType === "user" ? event.actorId : undefined,
+      };
     case "agent.connected":
     case "agent.registration-requested":
-      return { actorType: "agent", actorUserId: event.agentId };
+      return { actorType: "agent" };
     default:
       return {};
   }
