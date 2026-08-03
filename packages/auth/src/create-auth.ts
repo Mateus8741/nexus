@@ -8,9 +8,18 @@ export interface CreateAuthOptions {
   readonly baseURL: string;
   readonly secret: string;
   readonly trustedOrigins?: readonly string[];
+  /**
+   * Domínio pai para cookie compartilhado entre subdomínios
+   * (ex.: `codewaveds.com.br` para `nex.` + `core.`).
+   * Em localhost deixe undefined.
+   */
+  readonly cookieDomain?: string;
 }
 
 export function createAuth(options: CreateAuthOptions) {
+  const cookieDomain = options.cookieDomain?.trim();
+  const useCrossSubdomain = Boolean(cookieDomain);
+
   return betterAuth({
     database: drizzleAdapter(options.db, {
       provider: "pg",
@@ -40,6 +49,20 @@ export function createAuth(options: CreateAuthOptions) {
       database: {
         generateId: () => crypto.randomUUID(),
       },
+      ...(useCrossSubdomain
+        ? {
+            useSecureCookies: true,
+            crossSubDomainCookies: {
+              enabled: true,
+              domain: cookieDomain,
+            },
+            defaultCookieAttributes: {
+              secure: true,
+              sameSite: "lax" as const,
+              path: "/",
+            },
+          }
+        : {}),
     },
   });
 }

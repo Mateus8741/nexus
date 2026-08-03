@@ -59,6 +59,7 @@ const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL ?? `http://localhost:${PORT}
 const TRUSTED_ORIGINS = (
   process.env.NEXUS_TRUSTED_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000"
 ).split(",");
+const COOKIE_DOMAIN = process.env.BETTER_AUTH_COOKIE_DOMAIN;
 
 async function bootstrap(): Promise<void> {
   const logger = createConsoleLogger("plugin-host");
@@ -96,6 +97,7 @@ async function bootstrap(): Promise<void> {
     baseURL: BETTER_AUTH_URL,
     secret: BETTER_AUTH_SECRET,
     trustedOrigins: TRUSTED_ORIGINS,
+    cookieDomain: COOKIE_DOMAIN,
   });
 
   const executeDeviceAction = new ExecuteDeviceActionUseCase(
