@@ -47,6 +47,39 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     ],
   },
   {
+    key: "brightness-control",
+    label: "Brilho",
+    actions: [
+      {
+        type: "set-brightness",
+        label: "Definir brilho",
+        payloadSchema: { value: "number" },
+      },
+    ],
+  },
+  {
+    key: "color-temperature-control",
+    label: "Temperatura de cor",
+    actions: [
+      {
+        type: "set-color-temperature",
+        label: "Definir temperatura de cor",
+        payloadSchema: { value: "number" },
+      },
+    ],
+  },
+  {
+    key: "color-control",
+    label: "Cor",
+    actions: [
+      {
+        type: "set-color",
+        label: "Definir cor (HSV)",
+        payloadSchema: { h: "number", s: "number", v: "number" },
+      },
+    ],
+  },
+  {
     key: "datapoint-control",
     label: "Controle avançado (data point)",
     actions: [

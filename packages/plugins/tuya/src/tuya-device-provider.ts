@@ -15,8 +15,14 @@ import type { TuyaClient, TuyaDeviceDto, TuyaDeviceStatusItem } from "./tuya-cli
 
 const DESCRIPTOR: DeviceProviderDescriptor = { id: "nexus.tuya", name: "Tuya" };
 
-/** Códigos de data point comuns para "liga/desliga" em interruptores/tomadas Tuya. */
-const SWITCH_CODE_PATTERN = /^switch(_\d+)?$/i;
+/** Códigos de data point comuns para "liga/desliga" em interruptores/tomadas/luzes Tuya. */
+const SWITCH_CODE_PATTERN = /^(switch(_\d+)?|switch_led)$/i;
+
+/** Candidatos de data point por recurso, em ordem de preferência (v2 primeiro — faixa 0-1000; v1 — faixa 0-255). */
+const BRIGHTNESS_CODES = ["bright_value_v2", "bright_value"] as const;
+const COLOR_TEMPERATURE_CODES = ["temp_value_v2", "temp_value"] as const;
+const COLOR_CODES = ["colour_data_v2", "colour_data"] as const;
+const WORK_MODE_CODE = "work_mode";
 
 /** Mapeamento best-effort de `category` (Tuya) → `Device.kind` (Nexus) — só para exibição, nunca usado para tratamento especial. */
 const CATEGORY_TO_KIND: Record<string, string> = {
@@ -136,13 +142,67 @@ export class TuyaDeviceProvider implements DeviceProvider {
         SWITCH_CODE_PATTERN.test(key),
       );
       if (!switchCode) {
-        throw new Error('Dispositivo não expõe um datapoint de liga/desliga ("switch"/"switch_N").');
+        throw new Error(
+          'Dispositivo não expõe um datapoint de liga/desliga ("switch"/"switch_N"/"switch_led").',
+        );
       }
       const value =
         action.type === "toggle"
           ? !device.state.attributes[switchCode]
           : action.type === "turn_on";
       return [{ code: switchCode, value }];
+    }
+
+    if (action.type === "set-brightness") {
+      const code = findDatapointCode(device, BRIGHTNESS_CODES);
+      if (!code) {
+        throw new Error(
+          'Dispositivo não expõe um datapoint de brilho ("bright_value"/"bright_value_v2").',
+        );
+      }
+      const percent = clampPercent(action.payload?.value, "value");
+      const commands: Array<{ code: string; value: unknown }> = [
+        { code, value: percentToNative(percent, code) },
+      ];
+      const workMode = findDatapointCode(device, [WORK_MODE_CODE]);
+      if (workMode) commands.push({ code: workMode, value: "white" });
+      return commands;
+    }
+
+    if (action.type === "set-color-temperature") {
+      const code = findDatapointCode(device, COLOR_TEMPERATURE_CODES);
+      if (!code) {
+        throw new Error(
+          'Dispositivo não expõe um datapoint de temperatura de cor ("temp_value"/"temp_value_v2").',
+        );
+      }
+      const percent = clampPercent(action.payload?.value, "value");
+      const commands: Array<{ code: string; value: unknown }> = [
+        { code, value: percentToNative(percent, code) },
+      ];
+      const workMode = findDatapointCode(device, [WORK_MODE_CODE]);
+      if (workMode) commands.push({ code: workMode, value: "white" });
+      return commands;
+    }
+
+    if (action.type === "set-color") {
+      const code = findDatapointCode(device, COLOR_CODES);
+      if (!code) {
+        throw new Error('Dispositivo não expõe um datapoint de cor ("colour_data"/"colour_data_v2").');
+      }
+      const h = clampRange(action.payload?.h, 0, 360, "h");
+      const s = clampPercent(action.payload?.s, "s");
+      const v = clampPercent(action.payload?.v, "v");
+      const max = nativeMax(code);
+      const colorValue = JSON.stringify({
+        h: Math.round(h),
+        s: Math.round((s / 100) * max),
+        v: Math.round((v / 100) * max),
+      });
+      const commands = [{ code, value: colorValue }];
+      const workMode = findDatapointCode(device, [WORK_MODE_CODE]);
+      if (workMode) commands.push({ code: workMode, value: "colour" });
+      return commands;
     }
 
     throw new Error(`Ação "${action.type}" não é suportada pelo provider Tuya.`);
@@ -202,6 +262,32 @@ export class TuyaDeviceProvider implements DeviceProvider {
   }
 }
 
+/** Primeiro código, dentre os candidatos (em ordem de preferência), que o dispositivo reporta em `state.attributes`. */
+function findDatapointCode(device: Device, candidates: readonly string[]): string | undefined {
+  return candidates.find((code) => code in device.state.attributes);
+}
+
+/** Faixa nativa Tuya para o code informado: variantes "_v2" usam 0-1000, as demais 0-255. */
+function nativeMax(code: string): number {
+  return code.endsWith("_v2") ? 1000 : 255;
+}
+
+function percentToNative(percent: number, code: string): number {
+  return Math.round((percent / 100) * nativeMax(code));
+}
+
+function clampPercent(value: unknown, field: string): number {
+  return clampRange(value, 0, 100, field);
+}
+
+function clampRange(value: unknown, min: number, max: number, field: string): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) {
+    throw new Error(`payload.${field} precisa ser um número entre ${min} e ${max}.`);
+  }
+  return Math.min(max, Math.max(min, num));
+}
+
 function statesEqual(a: DeviceState, b: DeviceState): boolean {
   if (a.status !== b.status) return false;
   const aKeys = Object.keys(a.attributes);
@@ -228,6 +314,10 @@ function mapTuyaDeviceToDevice(dto: TuyaDeviceDto): Device {
   attributes.category = dto.category;
 
   const hasSwitch = Object.keys(attributes).some((key) => SWITCH_CODE_PATTERN.test(key));
+  const hasBrightness = BRIGHTNESS_CODES.some((code) => code in attributes);
+  const hasColorTemperature = COLOR_TEMPERATURE_CODES.some((code) => code in attributes);
+  const hasColor = COLOR_CODES.some((code) => code in attributes);
+
   const capabilities: DeviceCapability[] = [
     { key: "telemetry" },
     {
@@ -236,6 +326,20 @@ function mapTuyaDeviceToDevice(dto: TuyaDeviceDto): Device {
     },
     ...(hasSwitch
       ? [{ key: "power-control", actions: ["turn_on", "turn_off", "toggle"] } satisfies DeviceCapability]
+      : []),
+    ...(hasBrightness
+      ? [{ key: "brightness-control", actions: ["set-brightness"] } satisfies DeviceCapability]
+      : []),
+    ...(hasColorTemperature
+      ? [
+          {
+            key: "color-temperature-control",
+            actions: ["set-color-temperature"],
+          } satisfies DeviceCapability,
+        ]
+      : []),
+    ...(hasColor
+      ? [{ key: "color-control", actions: ["set-color"] } satisfies DeviceCapability]
       : []),
   ];
 

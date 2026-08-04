@@ -4,6 +4,7 @@ import type { ResolvedDeviceAction } from "@nexus/domain";
 import { Button } from "@nexus/ui/components/button";
 import { useState, useTransition } from "react";
 
+import { DeviceActionForm } from "@/components/dashboard/device-action-form";
 import { DeviceCommandTerminal } from "@/components/dashboard/device-command-terminal";
 import { runDeviceAction } from "@/lib/actions/device-actions";
 
@@ -21,6 +22,17 @@ interface ActionFeedback {
 
 function isExecuteCommandAction(action: ResolvedDeviceAction): boolean {
   return action.actionType === "executeCommand";
+}
+
+/**
+ * Qualquer action cujo `payloadSchema` declare pelo menos um campo precisa
+ * de input do usuário antes de executar — não dá pra disparar com payload
+ * vazio (ex.: `set-color` do plugin Tuya, que exige `{ h, s, v }`). Genérico
+ * de propósito: nenhuma menção a Tuya/Windows/qualquer fabricante aqui, só
+ * ao formato de `payloadSchema` (@nexus/domain).
+ */
+function needsPayloadForm(action: ResolvedDeviceAction): boolean {
+  return !isExecuteCommandAction(action) && Object.keys(action.payloadSchema ?? {}).length > 0;
 }
 
 /**
@@ -43,6 +55,7 @@ export function DeviceActionButtons({ deviceId, actions }: DeviceActionButtonsPr
   const [pendingType, setPendingType] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [openFormActionType, setOpenFormActionType] = useState<string | null>(null);
 
   if (actions.length === 0) {
     return <span className="text-xs text-muted-foreground">—</span>;
@@ -67,7 +80,15 @@ export function DeviceActionButtons({ deviceId, actions }: DeviceActionButtonsPr
   function handleClick(action: ResolvedDeviceAction) {
     if (isExecuteCommandAction(action)) {
       setFeedback(null);
+      setOpenFormActionType(null);
       setIsTerminalOpen((open) => !open);
+      return;
+    }
+
+    if (needsPayloadForm(action)) {
+      setFeedback(null);
+      setIsTerminalOpen(false);
+      setOpenFormActionType((current) => (current === action.actionType ? null : action.actionType));
       return;
     }
 
@@ -79,9 +100,13 @@ export function DeviceActionButtons({ deviceId, actions }: DeviceActionButtonsPr
       <div className="flex flex-wrap items-center gap-2">
         {actions.map((action) => {
           const isCommand = isExecuteCommandAction(action);
+          const hasForm = needsPayloadForm(action);
+          const isFormOpen = hasForm && openFormActionType === action.actionType;
           const isThisPending = isPending && pendingType === action.actionType;
           const actionFeedback =
-            !isCommand && feedback?.actionType === action.actionType ? feedback : undefined;
+            !isCommand && !hasForm && feedback?.actionType === action.actionType
+              ? feedback
+              : undefined;
 
           return (
             <div
@@ -92,15 +117,17 @@ export function DeviceActionButtons({ deviceId, actions }: DeviceActionButtonsPr
                 type="button"
                 variant="outline"
                 size="xs"
-                disabled={isThisPending || (isPending && !isCommand)}
-                aria-expanded={isCommand ? isTerminalOpen : undefined}
+                disabled={isThisPending || (isPending && !isCommand && !hasForm)}
+                aria-expanded={isCommand ? isTerminalOpen : hasForm ? isFormOpen : undefined}
                 onClick={() => handleClick(action)}
               >
                 {isThisPending
                   ? "Executando..."
                   : isCommand && isTerminalOpen
                     ? "Fechar terminal"
-                    : action.label}
+                    : isFormOpen
+                      ? "Fechar"
+                      : action.label}
               </Button>
 
               {actionFeedback ? (
@@ -113,6 +140,14 @@ export function DeviceActionButtons({ deviceId, actions }: DeviceActionButtonsPr
                 >
                   {actionFeedback.message}
                 </span>
+              ) : null}
+
+              {isFormOpen ? (
+                <DeviceActionForm
+                  deviceId={deviceId}
+                  action={action}
+                  onClose={() => setOpenFormActionType(null)}
+                />
               ) : null}
             </div>
           );
