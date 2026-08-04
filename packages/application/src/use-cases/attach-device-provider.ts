@@ -49,11 +49,16 @@ export class AttachDeviceProviderUseCase {
   }
 
   private upsert(device: Device): void {
-    if (this.deviceRegistry.has(device.id)) {
-      this.deviceRegistry.updateState(device.id, device.state);
-    } else {
-      this.deviceRegistry.register(device);
-    }
+    // Sempre `register()` (nunca só `updateState()`), mesmo pra devices já
+    // conhecidos: `register()` regrava o Device inteiro (capabilities, name,
+    // kind, etc.), enquanto `updateState()` só toca `state`. Sem isso, um
+    // device hidratado do Postgres (ver PersistingDeviceRegistry.hydrate())
+    // nunca mais recebia as `capabilities` atuais do provider — elas ficavam
+    // permanentemente presas no que quer que tivesse sido persistido antes,
+    // fazendo os botões de ação sumirem da UI depois de qualquer restart do
+    // Core. `register()` é idempotente (upsert no repositório), então chamar
+    // sempre não tem custo de correção, só uma escrita a mais no Postgres.
+    this.deviceRegistry.register(device);
   }
 
   private async handleEvent(provider: DeviceProvider, event: DeviceEvent): Promise<void> {

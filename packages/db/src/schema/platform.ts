@@ -96,7 +96,19 @@ export const devices = pgTable(
     externalId: text("external_id").notNull(),
     name: text("name").notNull(),
     kind: text("kind").notNull(),
-    capabilities: jsonb("capabilities").$type<string[]>().notNull().default([]),
+    /**
+     * Espelha `DeviceCapability[]` de @nexus/domain (`{ key, actions? }`) —
+     * não redeclarado aqui como import porque @nexus/db não depende de
+     * @nexus/domain (regra de camadas, ver ARCHITECTURE.md). Histórico: até
+     * aqui essa coluna guardava só `string[]` (as keys), o que perdia
+     * `actions` a cada hidratação — ver rowToDevice() em
+     * postgres-device-repository.ts, que lida com linhas antigas nesse
+     * formato antigo por compatibilidade.
+     */
+    capabilities: jsonb("capabilities")
+      .$type<Array<{ key: string; actions?: string[] }>>()
+      .notNull()
+      .default([]),
     state: jsonb("state").$type<Record<string, unknown>>().notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
