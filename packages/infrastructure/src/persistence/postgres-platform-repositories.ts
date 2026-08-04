@@ -4,6 +4,7 @@ import {
   memberships,
   notificationHistory,
   plugins,
+  providerAccounts,
   rolePermissions,
   roles,
   settings,
@@ -17,6 +18,8 @@ import type {
   MembershipRepository,
   NotificationHistoryRepository,
   PluginRepository,
+  ProviderAccount,
+  ProviderAccountRepository,
   Role,
   RoleRepository,
   SettingsRepository,
@@ -112,6 +115,7 @@ export class PostgresMembershipRepository implements MembershipRepository {
       workspaceId: membership.workspaceId,
       userId: membership.userId,
       roleId: membership.roleId,
+      spaceId: membership.spaceId,
       createdAt: membership.createdAt,
     });
   }
@@ -126,6 +130,7 @@ export class PostgresMembershipRepository implements MembershipRepository {
         workspaceId: memberships.workspaceId,
         userId: memberships.userId,
         roleId: memberships.roleId,
+        spaceId: memberships.spaceId,
         createdAt: memberships.createdAt,
         roleKey: roles.key,
       })
@@ -133,7 +138,9 @@ export class PostgresMembershipRepository implements MembershipRepository {
       .innerJoin(roles, eq(memberships.roleId, roles.id))
       .where(and(eq(memberships.userId, userId), eq(memberships.workspaceId, workspaceId)))
       .limit(1);
-    return rows[0];
+    const row = rows[0];
+    if (!row) return undefined;
+    return { ...row, spaceId: row.spaceId ?? undefined };
   }
 
   async listByWorkspace(
@@ -145,6 +152,7 @@ export class PostgresMembershipRepository implements MembershipRepository {
         workspaceId: memberships.workspaceId,
         userId: memberships.userId,
         roleId: memberships.roleId,
+        spaceId: memberships.spaceId,
         createdAt: memberships.createdAt,
         roleKey: roles.key,
         email: user.email,
@@ -163,6 +171,7 @@ export class PostgresMembershipRepository implements MembershipRepository {
       workspaceId: row.workspaceId,
       userId: row.userId,
       roleId: row.roleId,
+      spaceId: row.spaceId ?? undefined,
       createdAt: row.createdAt,
       roleKey: row.roleKey,
       user: {
@@ -183,13 +192,62 @@ export class PostgresMembershipRepository implements MembershipRepository {
         workspaceId: memberships.workspaceId,
         userId: memberships.userId,
         roleId: memberships.roleId,
+        spaceId: memberships.spaceId,
         createdAt: memberships.createdAt,
         roleKey: roles.key,
       })
       .from(memberships)
       .innerJoin(roles, eq(memberships.roleId, roles.id))
       .where(eq(memberships.userId, userId));
-    return rows;
+    return rows.map((row) => ({ ...row, spaceId: row.spaceId ?? undefined }));
+  }
+}
+
+export class PostgresProviderAccountRepository implements ProviderAccountRepository {
+  constructor(private readonly db: NexusDatabase) {}
+
+  async create(account: ProviderAccount): Promise<void> {
+    await this.db.insert(providerAccounts).values({
+      id: account.id,
+      workspaceId: account.workspaceId,
+      spaceId: account.spaceId,
+      providerId: account.providerId,
+      externalId: account.externalId,
+      label: account.label,
+      createdAt: account.createdAt,
+    });
+  }
+
+  async listByProvider(providerId: string): Promise<readonly ProviderAccount[]> {
+    const rows = await this.db
+      .select()
+      .from(providerAccounts)
+      .where(eq(providerAccounts.providerId, providerId));
+    return rows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspaceId,
+      spaceId: row.spaceId,
+      providerId: row.providerId,
+      externalId: row.externalId,
+      label: row.label ?? undefined,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<readonly ProviderAccount[]> {
+    const rows = await this.db
+      .select()
+      .from(providerAccounts)
+      .where(eq(providerAccounts.workspaceId, workspaceId));
+    return rows.map((row) => ({
+      id: row.id,
+      workspaceId: row.workspaceId,
+      spaceId: row.spaceId,
+      providerId: row.providerId,
+      externalId: row.externalId,
+      label: row.label ?? undefined,
+      createdAt: row.createdAt,
+    }));
   }
 }
 

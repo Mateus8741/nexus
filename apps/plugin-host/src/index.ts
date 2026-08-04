@@ -2,12 +2,17 @@ import {
   ApproveAgentUseCase,
   AttachDeviceProviderUseCase,
   CreateApiKeyUseCase,
+  CreateMembershipUseCase,
+  CreateProviderAccountUseCase,
+  CreateSpaceUseCase,
   ExecuteDeviceActionUseCase,
   ListAgentsUseCase,
   ListApiKeysUseCase,
   ListAuditLogsUseCase,
   ListPersistedEventsUseCase,
+  ListProviderAccountsUseCase,
   ListRolesUseCase,
+  ListSpacesUseCase,
   ListUsersUseCase,
   MarkAgentConnectedUseCase,
   NotificationCenter,
@@ -34,7 +39,9 @@ import {
   PostgresEventStore,
   PostgresMembershipRepository,
   PostgresPermissionService,
+  PostgresProviderAccountRepository,
   PostgresRoleRepository,
+  PostgresSpaceRepository,
   TimerHealthMonitor,
   WebSocketAgentGateway,
 } from "@nexus/infrastructure";
@@ -103,6 +110,8 @@ async function bootstrap(): Promise<void> {
   const roles = new PostgresRoleRepository(db);
   const agents = new PostgresAgentRegistrationRepository(db);
   const apiKeys = new PostgresApiKeyRepository(db);
+  const spaceRepository = new PostgresSpaceRepository(db);
+  const providerAccountRepository = new PostgresProviderAccountRepository(db);
 
   const auth = createAuth({
     db,
@@ -132,6 +141,17 @@ async function bootstrap(): Promise<void> {
   const listApiKeys = new ListApiKeysUseCase(apiKeys, permissionService);
   const listAudit = new ListAuditLogsUseCase(auditLog, permissionService);
   const listEvents = new ListPersistedEventsUseCase(eventStore, permissionService);
+  const createSpace = new CreateSpaceUseCase(spaceRepository, permissionService);
+  const listSpaces = new ListSpacesUseCase(spaceRepository, permissionService);
+  const createMembership = new CreateMembershipUseCase(memberships, permissionService);
+  const createProviderAccount = new CreateProviderAccountUseCase(
+    providerAccountRepository,
+    permissionService,
+  );
+  const listProviderAccounts = new ListProviderAccountsUseCase(
+    providerAccountRepository,
+    permissionService,
+  );
 
   const pluginRegistry = new PluginRegistry();
   const pluginLoader = new PluginLoader(pluginRegistry);
@@ -182,6 +202,13 @@ async function bootstrap(): Promise<void> {
       return pairingRef.current;
     },
     defaultWorkspaceId: workspaceId,
+    roles,
+    spaces: spaceRepository,
+    createSpace,
+    listSpaces,
+    createMembership,
+    createProviderAccount,
+    listProviderAccounts,
   });
 
   const agentGateway = new WebSocketAgentGateway({ server: httpServer });
@@ -203,12 +230,48 @@ async function bootstrap(): Promise<void> {
   providers.push(windowsProvider);
   deviceProviderRegistry.register(windowsProvider);
 
-  const tuyaEnabled = Boolean(TUYA_ACCESS_ID && TUYA_ACCESS_SECRET && TUYA_UID);
+  // Contas Tuya vêm do Postgres (provider_accounts), não mais de uma única
+  // env var — isso é o que permite múltiplas pessoas, cada uma com sua
+  // própria conta Smart Life isolada num Space (ver ProviderAccount em
+  // @nexus/domain). TUYA_UID (env var legada) é migrada automaticamente
+  // para uma linha em provider_accounts na primeira vez que o Core sobe com
+  // ela definida, presa ao primeiro Space do workspace — assim o deploy já
+  // existente continua funcionando sem exigir nenhuma ação manual. Contas
+  // adicionais (para outras pessoas/ambientes) são cadastradas via
+  // POST /provider-accounts.
+  if (TUYA_ACCESS_ID && TUYA_ACCESS_SECRET && TUYA_UID) {
+    const existingTuyaAccounts = await providerAccountRepository.listByProvider("nexus.tuya");
+    const alreadyMigrated = existingTuyaAccounts.some((account) => account.externalId === TUYA_UID);
+    if (!alreadyMigrated) {
+      const workspaceSpaces = await spaceRepository.listByWorkspace(workspaceId);
+      const defaultSpace = workspaceSpaces[0];
+      if (defaultSpace) {
+        await providerAccountRepository.create({
+          id: crypto.randomUUID(),
+          workspaceId,
+          spaceId: defaultSpace.id,
+          providerId: "nexus.tuya",
+          externalId: TUYA_UID,
+          label: "Migrado de TUYA_UID",
+          createdAt: new Date(),
+        });
+        logger.info(
+          `Conta Tuya (uid=${TUYA_UID}) migrada da env var TUYA_UID para o Space "${defaultSpace.name}".`,
+        );
+      }
+    }
+  }
+
+  const tuyaAccounts = (await providerAccountRepository.listByProvider("nexus.tuya")).map(
+    (account) => ({ uid: account.externalId, spaceId: account.spaceId }),
+  );
+
+  const tuyaEnabled = Boolean(TUYA_ACCESS_ID && TUYA_ACCESS_SECRET && tuyaAccounts.length > 0);
   const tuyaBundle = tuyaEnabled
     ? createTuyaPlugin({
         accessId: TUYA_ACCESS_ID as string,
         accessSecret: TUYA_ACCESS_SECRET as string,
-        uid: TUYA_UID as string,
+        accounts: tuyaAccounts,
         endpoint: TUYA_ENDPOINT,
         pollIntervalMs: TUYA_POLL_INTERVAL_MS,
         capabilityRegistry,
@@ -219,7 +282,7 @@ async function bootstrap(): Promise<void> {
     deviceProviderRegistry.register(tuyaBundle.provider);
   } else {
     logger.info(
-      "Tuya plugin desativado — defina TUYA_ACCESS_ID, TUYA_ACCESS_SECRET e TUYA_UID para ativar (ver .env.example).",
+      "Tuya plugin desativado — defina TUYA_ACCESS_ID, TUYA_ACCESS_SECRET e ao menos uma conta (TUYA_UID ou provider_accounts) para ativar (ver .env.example).",
     );
   }
 

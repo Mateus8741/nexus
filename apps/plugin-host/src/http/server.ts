@@ -3,12 +3,17 @@ import http from "node:http";
 import type {
   ApproveAgentUseCase,
   CreateApiKeyUseCase,
+  CreateMembershipUseCase,
+  CreateProviderAccountUseCase,
+  CreateSpaceUseCase,
   ExecuteDeviceActionUseCase,
   ListAgentsUseCase,
   ListApiKeysUseCase,
   ListAuditLogsUseCase,
   ListPersistedEventsUseCase,
+  ListProviderAccountsUseCase,
   ListRolesUseCase,
+  ListSpacesUseCase,
   ListUsersUseCase,
   RevokeAgentUseCase,
   RevokeApiKeyUseCase,
@@ -27,6 +32,8 @@ import type {
   DeviceRegistry,
   EventBus,
   PermissionService,
+  RoleRepository,
+  SpaceRepository,
   SystemEvent,
 } from "@nexus/domain";
 import { PermissionDeniedError } from "@nexus/domain";
@@ -63,6 +70,19 @@ export interface HttpServerDeps {
   readonly revokeApiKey: RevokeApiKeyUseCase;
   readonly pairingBridge: AgentPairingBridge;
   readonly defaultWorkspaceId: string;
+  readonly roles: RoleRepository;
+  /**
+   * Leitura direta (sem passar por permission gate) — usada só para
+   * resolver o nome do Space do próprio ator em GET /me. Listar TODOS os
+   * Spaces do workspace continua exigindo "workspace.manage" via
+   * ListSpacesUseCase.
+   */
+  readonly spaces: SpaceRepository;
+  readonly createSpace: CreateSpaceUseCase;
+  readonly listSpaces: ListSpacesUseCase;
+  readonly createMembership: CreateMembershipUseCase;
+  readonly createProviderAccount: CreateProviderAccountUseCase;
+  readonly listProviderAccounts: ListProviderAccountsUseCase;
 }
 
 const DEFAULT_EVENTS_LIMIT = 50;
@@ -79,6 +99,26 @@ const setupSchema = z.object({
 const createApiKeySchema = z.object({
   name: z.string().min(1),
   scopes: z.array(z.string()).default([]),
+});
+
+const createSpaceSchema = z.object({
+  name: z.string().min(1),
+  parentId: z.string().optional(),
+});
+
+const inviteUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  name: z.string().min(1),
+  roleKey: z.string().min(1),
+  spaceId: z.string().optional(),
+});
+
+const createProviderAccountSchema = z.object({
+  spaceId: z.string().min(1),
+  providerId: z.string().min(1),
+  externalId: z.string().min(1),
+  label: z.string().optional(),
 });
 
 export function createHttpServer(deps: HttpServerDeps): http.Server {
@@ -158,12 +198,15 @@ async function handleRequest(
   }
 
   if (req.method === "GET" && pathname === "/me") {
+    const space = actor.spaceId ? await deps.spaces.get(actor.spaceId) : undefined;
     respondJson(res, 200, {
       actor: {
         type: actor.type,
         id: actor.id,
         workspaceId: actor.workspaceId,
         roleKey: actor.roleKey,
+        spaceId: actor.spaceId,
+        spaceName: space?.name,
       },
     });
     return;
@@ -171,7 +214,12 @@ async function handleRequest(
 
   if (req.method === "GET" && pathname === "/devices") {
     await deps.permissionService.require(actor, "device.read");
-    respondJson(res, 200, deps.deviceRegistry.list().map(toDeviceDto));
+    // Ator restrito a um Space só enxerga dispositivos desse ambiente — ver
+    // ActorContext.spaceId. Sem restrição (Owner hoje), enxerga tudo.
+    const devices = actor.spaceId
+      ? deps.deviceRegistry.list().filter((device) => device.spaceId === actor.spaceId)
+      : deps.deviceRegistry.list();
+    respondJson(res, 200, devices.map(toDeviceDto));
     return;
   }
 
@@ -316,6 +364,31 @@ async function handleRequest(
     return;
   }
 
+  if (req.method === "GET" && pathname === "/spaces") {
+    respondJson(res, 200, await deps.listSpaces.execute({ actor }));
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/spaces") {
+    await handleCreateSpace(deps, actor, req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/users/invite") {
+    await handleInviteUser(deps, actor, req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/provider-accounts") {
+    respondJson(res, 200, await deps.listProviderAccounts.execute({ actor }));
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/provider-accounts") {
+    await handleCreateProviderAccount(deps, actor, req, res);
+    return;
+  }
+
   const actionsMatch = req.method === "POST" ? pathname.match(ACTIONS_ROUTE_PATTERN) : null;
   if (actionsMatch) {
     const deviceId = actionsMatch[1] as string;
@@ -406,6 +479,95 @@ async function handleCreateApiKey(
     scopes: apiKey.scopes,
     token: generated.token,
   });
+}
+
+async function handleCreateSpace(
+  deps: HttpServerDeps,
+  actor: ActorContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const parsed = createSpaceSchema.safeParse(JSON.parse((await readRequestBody(req)) || "{}"));
+  if (!parsed.success) {
+    respondJson(res, 400, { error: parsed.error.flatten() });
+    return;
+  }
+  const space = await deps.createSpace.execute({
+    actor,
+    name: parsed.data.name,
+    parentId: parsed.data.parentId,
+  });
+  respondJson(res, 201, space);
+}
+
+/**
+ * Convite de usuário: cria a conta via Better Auth (não tem membership
+ * própria — @nexus/application não pode depender do Better Auth, ver
+ * handleSetup acima para o mesmo padrão) e então vincula ao workspace com um
+ * papel e, opcionalmente, um Space via CreateMembershipUseCase (que já exige
+ * a permissão "user.manage" do ator que está convidando).
+ */
+async function handleInviteUser(
+  deps: HttpServerDeps,
+  actor: ActorContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const parsed = inviteUserSchema.safeParse(JSON.parse((await readRequestBody(req)) || "{}"));
+  if (!parsed.success) {
+    respondJson(res, 400, { error: parsed.error.flatten() });
+    return;
+  }
+
+  const role = await deps.roles.getByKey(actor.workspaceId, parsed.data.roleKey);
+  if (!role) {
+    respondJson(res, 400, { error: `Papel "${parsed.data.roleKey}" não encontrado.` });
+    return;
+  }
+
+  const result = await deps.auth.api.signUpEmail({
+    body: {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      name: parsed.data.name,
+    },
+  });
+  if (!result.user) {
+    respondJson(res, 500, { error: "Falha ao criar usuário." });
+    return;
+  }
+
+  const membership = await deps.createMembership.execute({
+    actor,
+    userId: result.user.id,
+    roleId: role.id,
+    spaceId: parsed.data.spaceId,
+  });
+
+  respondJson(res, 201, { userId: result.user.id, email: result.user.email, membership });
+}
+
+async function handleCreateProviderAccount(
+  deps: HttpServerDeps,
+  actor: ActorContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const parsed = createProviderAccountSchema.safeParse(
+    JSON.parse((await readRequestBody(req)) || "{}"),
+  );
+  if (!parsed.success) {
+    respondJson(res, 400, { error: parsed.error.flatten() });
+    return;
+  }
+  const account = await deps.createProviderAccount.execute({
+    actor,
+    spaceId: parsed.data.spaceId,
+    providerId: parsed.data.providerId,
+    externalId: parsed.data.externalId,
+    label: parsed.data.label,
+  });
+  respondJson(res, 201, account);
 }
 
 async function handleExecuteDeviceAction(

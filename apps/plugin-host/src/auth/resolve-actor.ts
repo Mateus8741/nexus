@@ -80,6 +80,7 @@ export async function resolveActor(
       id: session.user.id,
       workspaceId: membership.workspaceId,
       roleKey: membership.roleKey,
+      spaceId: membership.spaceId,
       ip,
       userAgent:
         typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,

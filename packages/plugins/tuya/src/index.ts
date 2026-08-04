@@ -8,7 +8,7 @@ import {
 
 import manifestJson from "../plugin.manifest.json";
 import { TuyaClient, type TuyaClientOptions } from "./tuya-client";
-import { TuyaDeviceProvider } from "./tuya-device-provider";
+import { type TuyaAccountConfig, TuyaDeviceProvider } from "./tuya-device-provider";
 
 /**
  * @nexus/plugin-tuya — plugin de primeira parte para dispositivos
@@ -21,11 +21,16 @@ const manifest = manifestJson as unknown as PluginManifest;
 assertPluginManifest(manifest, "@nexus/plugin-tuya");
 
 export { TuyaApiError, TuyaClient, type TuyaClientOptions } from "./tuya-client";
-export { TuyaDeviceProvider } from "./tuya-device-provider";
+export { type TuyaAccountConfig, TuyaDeviceProvider } from "./tuya-device-provider";
 
 export interface CreateTuyaPluginOptions extends TuyaClientOptions {
-  /** Tuya user ID (uid) — obtido ao vincular a conta Smart Life/Tuya App ao projeto Cloud Development. */
-  readonly uid: string;
+  /**
+   * Contas Tuya (uid + Space) a sincronizar — uma por ambiente/usuário (ver
+   * ProviderAccount em @nexus/domain). Substituiu o antigo `uid` único:
+   * agora várias pessoas podem ter suas próprias contas Smart Life, cada
+   * uma isolada no seu Space, sem precisar compartilhar a mesma conta Tuya.
+   */
+  readonly accounts: readonly TuyaAccountConfig[];
   /** Intervalo de polling (ms). Padrão: 30s — a Tuya Cloud API não empurra eventos em tempo real sem o serviço de Message Queue (Pulsar), fora de escopo aqui. */
   readonly pollIntervalMs?: number;
   readonly capabilityRegistry: CapabilityRegistry;
@@ -101,7 +106,7 @@ export function createTuyaPlugin(options: CreateTuyaPluginOptions): TuyaPluginBu
   });
   const provider = new TuyaDeviceProvider({
     client,
-    uid: options.uid,
+    accounts: options.accounts,
     pollIntervalMs: options.pollIntervalMs,
   });
 
@@ -114,7 +119,7 @@ export function createTuyaPlugin(options: CreateTuyaPluginOptions): TuyaPluginBu
       provider.setLogger(context.logger);
       provider.start();
       context.logger.info(
-        `Tuya plugin iniciado — sincronizando dispositivos do uid "${options.uid}" a cada ${
+        `Tuya plugin iniciado — sincronizando ${options.accounts.length} conta(s) a cada ${
           (options.pollIntervalMs ?? 30_000) / 1000
         }s.`,
       );

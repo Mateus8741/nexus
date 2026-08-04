@@ -39,10 +39,22 @@ const CATEGORY_TO_KIND: Record<string, string> = {
   ldcg: "sensor",
 };
 
+/**
+ * Uma conta Tuya (uid) a sincronizar, junto do Space (ambiente) ao qual seus
+ * dispositivos pertencem — permite múltiplos usuários, cada um com sua
+ * própria conta Smart Life vinculada a um ambiente isolado (ver
+ * ProviderAccount em @nexus/domain e apps/plugin-host/src/index.ts, que
+ * carrega essa lista do Postgres em vez de uma única env var fixa).
+ */
+export interface TuyaAccountConfig {
+  readonly uid: string;
+  readonly spaceId: string;
+}
+
 export interface TuyaDeviceProviderOptions {
   readonly client: TuyaClient;
-  /** Tuya user ID (uid) cujos dispositivos vinculados (app Smart Life/Tuya) serão sincronizados. */
-  readonly uid: string;
+  /** Contas Tuya (uid + Space) cujos dispositivos vinculados (app Smart Life/Tuya) serão sincronizados. */
+  readonly accounts: readonly TuyaAccountConfig[];
   readonly pollIntervalMs?: number;
   readonly logger?: PluginLogger;
 }
@@ -211,7 +223,10 @@ export class TuyaDeviceProvider implements DeviceProvider {
   private async refreshDevice(deviceId: string): Promise<Device | undefined> {
     const dto = await this.options.client.getDevice(deviceId);
     if (!dto) return undefined;
-    const mapped = mapTuyaDeviceToDevice(dto);
+    // getDevice() não informa a qual uid/conta o dispositivo pertence — o
+    // Space é preservado do último estado conhecido (populado no poll()).
+    const spaceId = this.devices.get(deviceId)?.spaceId;
+    const mapped = mapTuyaDeviceToDevice(dto, spaceId);
     this.devices.set(deviceId, mapped);
     return mapped;
   }
@@ -220,25 +235,34 @@ export class TuyaDeviceProvider implements DeviceProvider {
     if (this.polling) return; // evita sobreposição se um ciclo demorar mais que o intervalo
     this.polling = true;
     try {
-      const remote = await this.options.client.getUserDevices(this.options.uid);
       const seen = new Set<string>();
 
-      for (const dto of remote) {
-        seen.add(dto.id);
-        const mapped = mapTuyaDeviceToDevice(dto);
-        const previous = this.devices.get(dto.id);
-        this.devices.set(dto.id, mapped);
+      for (const account of this.options.accounts) {
+        try {
+          const remote = await this.options.client.getUserDevices(account.uid);
 
-        if (!previous) {
-          this.emit({ type: "device.connected", deviceId: dto.id, occurredAt: new Date() });
-        } else if (!statesEqual(previous.state, mapped.state)) {
-          this.emit({
-            type: "device.state-changed",
-            deviceId: dto.id,
-            occurredAt: new Date(),
-            previousState: previous.state,
-            currentState: mapped.state,
-          });
+          for (const dto of remote) {
+            seen.add(dto.id);
+            const mapped = mapTuyaDeviceToDevice(dto, account.spaceId);
+            const previous = this.devices.get(dto.id);
+            this.devices.set(dto.id, mapped);
+
+            if (!previous) {
+              this.emit({ type: "device.connected", deviceId: dto.id, occurredAt: new Date() });
+            } else if (!statesEqual(previous.state, mapped.state)) {
+              this.emit({
+                type: "device.state-changed",
+                deviceId: dto.id,
+                occurredAt: new Date(),
+                previousState: previous.state,
+                currentState: mapped.state,
+              });
+            }
+          }
+        } catch (error) {
+          this.logger?.error(
+            `Falha ao sincronizar dispositivos da conta Tuya "${account.uid}": ${String(error)}`,
+          );
         }
       }
 
@@ -304,7 +328,7 @@ function normalizeAttributeValue(value: unknown): DeviceAttributeValue {
   return JSON.stringify(value);
 }
 
-function mapTuyaDeviceToDevice(dto: TuyaDeviceDto): Device {
+function mapTuyaDeviceToDevice(dto: TuyaDeviceDto, spaceId: string | undefined): Device {
   const attributes: Record<string, DeviceAttributeValue> = {};
   for (const item of dto.status as readonly TuyaDeviceStatusItem[]) {
     attributes[item.code] = normalizeAttributeValue(item.value);
@@ -350,6 +374,7 @@ function mapTuyaDeviceToDevice(dto: TuyaDeviceDto): Device {
     name: dto.name,
     kind: CATEGORY_TO_KIND[dto.category] ?? "device",
     capabilities,
+    spaceId,
     state: {
       status: dto.online ? "online" : "offline",
       attributes,

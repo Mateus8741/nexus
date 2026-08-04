@@ -79,6 +79,13 @@ export const memberships = pgTable(
     roleId: text("role_id")
       .notNull()
       .references(() => roles.id, { onDelete: "restrict" }),
+    /**
+     * `null` = sem restrição de ambiente (enxerga todo o workspace — é o
+     * caso do Owner hoje). Preenchido = membro só enxerga dispositivos
+     * desse Space (ver ActorContext.spaceId em @nexus/domain e o filtro em
+     * apps/plugin-host/src/http/server.ts).
+     */
+    spaceId: text("space_id").references(() => spaces.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("memberships_workspace_user_idx").on(table.workspaceId, table.userId)],
@@ -183,3 +190,36 @@ export const capabilities = pgTable("capabilities", {
   ownerPluginKey: text("owner_plugin_key"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Conta externa (ex.: uma conta de app Smart Life/Tuya, um usuário de
+ * Home Assistant, etc.) vinculada a um Space específico. Genérica de
+ * propósito — nenhuma menção a "Tuya" aqui, mesma regra de sempre (ver
+ * PROJECT.md): quem interpreta `externalId` é o DeviceProvider do
+ * `providerId` correspondente (ex.: @nexus/plugin-tuya lê `externalId`
+ * como `uid` da Tuya Cloud API). Isso é o que permite várias contas do
+ * mesmo provider — uma por Space/ambiente — em vez de um único valor fixo
+ * em variável de ambiente.
+ */
+export const providerAccounts = pgTable(
+  "provider_accounts",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    spaceId: text("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    externalId: text("external_id").notNull(),
+    label: text("label"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("provider_accounts_provider_external_idx").on(
+      table.providerId,
+      table.externalId,
+    ),
+  ],
+);

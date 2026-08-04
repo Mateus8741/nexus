@@ -8,6 +8,7 @@ export type {
   MembershipRepository,
   NotificationHistoryRepository,
   PluginRepository,
+  ProviderAccountRepository,
   RoleRepository,
   SettingsRepository,
   SpaceRepository,

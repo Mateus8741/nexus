@@ -25,6 +25,7 @@ export {
   PostgresMembershipRepository,
   PostgresNotificationHistoryRepository,
   PostgresPluginRepository,
+  PostgresProviderAccountRepository,
   PostgresRoleRepository,
   PostgresSettingsRepository,
   PostgresSpaceRepository,

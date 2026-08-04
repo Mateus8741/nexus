@@ -1,4 +1,5 @@
 import type { Membership } from "../entities/membership";
+import type { ProviderAccount } from "../entities/provider-account";
 import type { Role } from "../entities/role";
 import type { Space } from "../entities/space";
 import type { User } from "../entities/user";
@@ -85,6 +86,17 @@ export interface PluginRepository {
     }[]
   >;
   remove(workspaceId: string, pluginKey: string): Promise<void>;
+}
+
+/**
+ * Contas externas (ex.: contas Tuya/Smart Life) vinculadas a um Space —
+ * ver ProviderAccount para o racional completo de por que isso é genérico
+ * por provider e não específico da Tuya.
+ */
+export interface ProviderAccountRepository {
+  create(account: ProviderAccount): Promise<void>;
+  listByProvider(providerId: string): Promise<readonly ProviderAccount[]>;
+  listByWorkspace(workspaceId: string): Promise<readonly ProviderAccount[]>;
 }
 
 export interface CapabilityDefinitionRepository {

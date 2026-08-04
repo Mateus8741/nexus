@@ -50,6 +50,13 @@ export class ExecuteDeviceActionUseCase {
       return { success: false, error: `Dispositivo "${input.deviceId}" não encontrado.` };
     }
 
+    // Ator restrito a um Space (ver ActorContext.spaceId) só pode agir sobre
+    // dispositivos desse mesmo ambiente — dispositivos sem spaceId (legado)
+    // ou de outro Space ficam fora do alcance dele.
+    if (input.actor.spaceId && device.spaceId !== input.actor.spaceId) {
+      return { success: false, error: `Dispositivo "${input.deviceId}" fora do seu ambiente.` };
+    }
+
     const provider = this.providerRegistry.get(device.providerId);
     if (!provider) {
       return {
