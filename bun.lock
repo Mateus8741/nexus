@@ -36,6 +36,7 @@
         "@nexus/db": "workspace:*",
         "@nexus/domain": "workspace:*",
         "@nexus/infrastructure": "workspace:*",
+        "@nexus/plugin-tuya": "workspace:*",
         "@nexus/plugin-windows": "workspace:*",
         "@nexus/plugins-sdk": "workspace:*",
         "better-auth": "1.2.12",
@@ -160,6 +161,19 @@
       "version": "0.0.0",
       "devDependencies": {
         "@nexus/typescript-config": "workspace:*",
+        "typescript": "^5",
+      },
+    },
+    "packages/plugins/tuya": {
+      "name": "@nexus/plugin-tuya",
+      "version": "0.1.0",
+      "dependencies": {
+        "@nexus/domain": "workspace:*",
+        "@nexus/plugins-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@nexus/typescript-config": "workspace:*",
+        "@types/node": "^20",
         "typescript": "^5",
       },
     },
@@ -467,6 +481,8 @@
     "@nexus/infrastructure": ["@nexus/infrastructure@workspace:packages/infrastructure"],
 
     "@nexus/plugin-host": ["@nexus/plugin-host@workspace:apps/plugin-host"],
+
+    "@nexus/plugin-tuya": ["@nexus/plugin-tuya@workspace:packages/plugins/tuya"],
 
     "@nexus/plugin-windows": ["@nexus/plugin-windows@workspace:packages/plugins/windows"],
 
