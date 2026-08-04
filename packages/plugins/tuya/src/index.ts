@@ -1,0 +1,96 @@
+import type { CapabilityDefinition, CapabilityRegistry } from "@nexus/domain";
+import {
+  assertPluginManifest,
+  definePlugin,
+  type Plugin,
+  type PluginManifest,
+} from "@nexus/plugins-sdk";
+
+import manifestJson from "../plugin.manifest.json";
+import { TuyaClient, type TuyaClientOptions } from "./tuya-client";
+import { TuyaDeviceProvider } from "./tuya-device-provider";
+
+/**
+ * @nexus/plugin-tuya — plugin de primeira parte para dispositivos
+ * Tuya/Smart Life (tomadas, interruptores, sensores, etc.), via Tuya Cloud
+ * API. Não depende de rede local nem de Local Key — funciona com o Core
+ * hospedado onde for (ver @nexus/plugin-windows para o caso oposto, que
+ * depende de um Agent local).
+ */
+const manifest = manifestJson as unknown as PluginManifest;
+assertPluginManifest(manifest, "@nexus/plugin-tuya");
+
+export { TuyaApiError, TuyaClient, type TuyaClientOptions } from "./tuya-client";
+export { TuyaDeviceProvider } from "./tuya-device-provider";
+
+export interface CreateTuyaPluginOptions extends TuyaClientOptions {
+  /** Tuya user ID (uid) — obtido ao vincular a conta Smart Life/Tuya App ao projeto Cloud Development. */
+  readonly uid: string;
+  /** Intervalo de polling (ms). Padrão: 30s — a Tuya Cloud API não empurra eventos em tempo real sem o serviço de Message Queue (Pulsar), fora de escopo aqui. */
+  readonly pollIntervalMs?: number;
+  readonly capabilityRegistry: CapabilityRegistry;
+}
+
+export interface TuyaPluginBundle {
+  readonly plugin: Plugin;
+  readonly provider: TuyaDeviceProvider;
+}
+
+const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
+  {
+    key: "power-control",
+    label: "Controle de energia",
+    actions: [
+      { type: "turn_on", label: "Ligar" },
+      { type: "turn_off", label: "Desligar" },
+      { type: "toggle", label: "Alternar" },
+    ],
+  },
+  {
+    key: "datapoint-control",
+    label: "Controle avançado (data point)",
+    actions: [
+      {
+        type: "set-datapoint",
+        label: "Definir data point",
+        payloadSchema: { code: "string", value: "string" },
+      },
+    ],
+  },
+  { key: "telemetry", label: "Telemetria" },
+];
+
+export function createTuyaPlugin(options: CreateTuyaPluginOptions): TuyaPluginBundle {
+  const client = new TuyaClient({
+    accessId: options.accessId,
+    accessSecret: options.accessSecret,
+    endpoint: options.endpoint,
+  });
+  const provider = new TuyaDeviceProvider({
+    client,
+    uid: options.uid,
+    pollIntervalMs: options.pollIntervalMs,
+  });
+
+  const plugin: Plugin = definePlugin({
+    manifest,
+    onStart(context) {
+      for (const definition of CAPABILITY_DEFINITIONS) {
+        options.capabilityRegistry.register(definition, manifest.id);
+      }
+      provider.setLogger(context.logger);
+      provider.start();
+      context.logger.info(
+        `Tuya plugin iniciado — sincronizando dispositivos do uid "${options.uid}" a cada ${
+          (options.pollIntervalMs ?? 30_000) / 1000
+        }s.`,
+      );
+    },
+    onStop(context) {
+      provider.stop();
+      context.logger.info("Tuya plugin parado.");
+    },
+  });
+
+  return { plugin, provider };
+}

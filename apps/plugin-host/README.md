@@ -2,7 +2,12 @@
 
 Processo Node.js de longa duração que carrega e executa os plugins do Nexus (`packages/plugins/*`). Existe separado de `apps/web` porque integrações como MQTT, varredura de rede e watchers de Docker/Proxmox precisam manter conexões e estado vivos — algo que não cabe bem no modelo serverless/route-handler do Next.js.
 
-É o composition root do sistema: o único lugar que instancia implementações concretas (`InMemoryDeviceRegistry`, `WebSocketAgentGateway`, `@nexus/plugin-windows`) e as conecta através das abstrações (`PluginRegistry`, `DeviceRegistry`, `AgentGateway`, `AttachDeviceProviderUseCase`).
+É o composition root do sistema: o único lugar que instancia implementações concretas (`InMemoryDeviceRegistry`, `WebSocketAgentGateway`, `@nexus/plugin-windows`, `@nexus/plugin-tuya`) e as conecta através das abstrações (`PluginRegistry`, `DeviceRegistry`, `AgentGateway`, `AttachDeviceProviderUseCase`).
+
+## Plugins embutidos
+
+- **`@nexus/plugin-windows`** — computadores Windows via Agent remoto (WebSocket + pareamento). Sempre ativo.
+- **`@nexus/plugin-tuya`** — dispositivos Tuya/Smart Life (tomadas, interruptores, sensores) via Tuya Cloud API, com polling periódico. Opcional: só ativa se `TUYA_ACCESS_ID`, `TUYA_ACCESS_SECRET` e `TUYA_UID` estiverem definidos (ver `.env.example`). Sem rede local nem Local Key — funciona com o Core hospedado onde for.
 
 ```
 bun run --filter @nexus/plugin-host dev

@@ -38,6 +38,7 @@ import {
   TimerHealthMonitor,
   WebSocketAgentGateway,
 } from "@nexus/infrastructure";
+import { createTuyaPlugin } from "@nexus/plugin-tuya";
 import { createWindowsPlugin } from "@nexus/plugin-windows";
 import {
   type PluginCandidate,
@@ -60,6 +61,17 @@ const TRUSTED_ORIGINS = (
   process.env.NEXUS_TRUSTED_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000"
 ).split(",");
 const COOKIE_DOMAIN = process.env.BETTER_AUTH_COOKIE_DOMAIN;
+
+// Tuya (opcional): só ativa o plugin se as três variáveis obrigatórias
+// estiverem presentes — ambientes sem Tuya configurado seguem funcionando
+// normalmente sem esse provider (ver README.md / .env.example).
+const TUYA_ACCESS_ID = process.env.TUYA_ACCESS_ID;
+const TUYA_ACCESS_SECRET = process.env.TUYA_ACCESS_SECRET;
+const TUYA_UID = process.env.TUYA_UID;
+const TUYA_ENDPOINT = process.env.TUYA_ENDPOINT;
+const TUYA_POLL_INTERVAL_MS = process.env.TUYA_POLL_INTERVAL_MS
+  ? Number(process.env.TUYA_POLL_INTERVAL_MS)
+  : undefined;
 
 async function bootstrap(): Promise<void> {
   const logger = createConsoleLogger("plugin-host");
@@ -191,9 +203,35 @@ async function bootstrap(): Promise<void> {
   providers.push(windowsProvider);
   deviceProviderRegistry.register(windowsProvider);
 
+  const tuyaEnabled = Boolean(TUYA_ACCESS_ID && TUYA_ACCESS_SECRET && TUYA_UID);
+  const tuyaBundle = tuyaEnabled
+    ? createTuyaPlugin({
+        accessId: TUYA_ACCESS_ID as string,
+        accessSecret: TUYA_ACCESS_SECRET as string,
+        uid: TUYA_UID as string,
+        endpoint: TUYA_ENDPOINT,
+        pollIntervalMs: TUYA_POLL_INTERVAL_MS,
+        capabilityRegistry,
+      })
+    : undefined;
+  if (tuyaBundle) {
+    providers.push(tuyaBundle.provider);
+    deviceProviderRegistry.register(tuyaBundle.provider);
+  } else {
+    logger.info(
+      "Tuya plugin desativado — defina TUYA_ACCESS_ID, TUYA_ACCESS_SECRET e TUYA_UID para ativar (ver .env.example).",
+    );
+  }
+
   const source: PluginSource = {
     discover(): PluginCandidate[] {
-      return [{ source: "built-in:@nexus/plugin-windows", value: windowsPlugin }];
+      const candidates: PluginCandidate[] = [
+        { source: "built-in:@nexus/plugin-windows", value: windowsPlugin },
+      ];
+      if (tuyaBundle) {
+        candidates.push({ source: "built-in:@nexus/plugin-tuya", value: tuyaBundle.plugin });
+      }
+      return candidates;
     },
   };
 
@@ -213,6 +251,9 @@ async function bootstrap(): Promise<void> {
   });
 
   await attachDeviceProvider.attach(windowsProvider);
+  if (tuyaBundle) {
+    await attachDeviceProvider.attach(tuyaBundle.provider);
+  }
 
   for (const plugin of loadResult.loaded) {
     const pluginLogger = createConsoleLogger(plugin.manifest.id);

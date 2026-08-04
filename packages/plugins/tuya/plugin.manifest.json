@@ -1,0 +1,11 @@
+{
+  "id": "nexus.tuya",
+  "name": "Tuya",
+  "version": "0.1.0",
+  "description": "Descobre e controla dispositivos Tuya/Smart Life (tomadas, interruptores, sensores etc.) através da Tuya Cloud API (OpenAPI), via polling — não depende de Local Key nem de rede local.",
+  "author": "Nexus",
+  "capabilities": ["device-adapter"],
+  "engines": {
+    "nexus": "^0.1.0"
+  }
+}
