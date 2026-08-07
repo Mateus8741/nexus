@@ -36,6 +36,7 @@
         "@nexus/db": "workspace:*",
         "@nexus/domain": "workspace:*",
         "@nexus/infrastructure": "workspace:*",
+        "@nexus/plugin-lg-thinq": "workspace:*",
         "@nexus/plugin-tuya": "workspace:*",
         "@nexus/plugin-windows": "workspace:*",
         "@nexus/plugins-sdk": "workspace:*",
@@ -161,6 +162,19 @@
       "version": "0.0.0",
       "devDependencies": {
         "@nexus/typescript-config": "workspace:*",
+        "typescript": "^5",
+      },
+    },
+    "packages/plugins/lg-thinq": {
+      "name": "@nexus/plugin-lg-thinq",
+      "version": "0.1.0",
+      "dependencies": {
+        "@nexus/domain": "workspace:*",
+        "@nexus/plugins-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@nexus/typescript-config": "workspace:*",
+        "@types/node": "^20",
         "typescript": "^5",
       },
     },
@@ -481,6 +495,8 @@
     "@nexus/infrastructure": ["@nexus/infrastructure@workspace:packages/infrastructure"],
 
     "@nexus/plugin-host": ["@nexus/plugin-host@workspace:apps/plugin-host"],
+
+    "@nexus/plugin-lg-thinq": ["@nexus/plugin-lg-thinq@workspace:packages/plugins/lg-thinq"],
 
     "@nexus/plugin-tuya": ["@nexus/plugin-tuya@workspace:packages/plugins/tuya"],
 
