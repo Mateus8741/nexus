@@ -2,12 +2,13 @@
 
 Processo Node.js de longa duração que carrega e executa os plugins do Nexus (`packages/plugins/*`). Existe separado de `apps/web` porque integrações como MQTT, varredura de rede e watchers de Docker/Proxmox precisam manter conexões e estado vivos — algo que não cabe bem no modelo serverless/route-handler do Next.js.
 
-É o composition root do sistema: o único lugar que instancia implementações concretas (`InMemoryDeviceRegistry`, `WebSocketAgentGateway`, `@nexus/plugin-windows`, `@nexus/plugin-tuya`) e as conecta através das abstrações (`PluginRegistry`, `DeviceRegistry`, `AgentGateway`, `AttachDeviceProviderUseCase`).
+É o composition root do sistema: o único lugar que instancia implementações concretas (`InMemoryDeviceRegistry`, `WebSocketAgentGateway`, `@nexus/plugin-windows`, `@nexus/plugin-tuya`, `@nexus/plugin-lg-thinq`) e as conecta através das abstrações (`PluginRegistry`, `DeviceRegistry`, `AgentGateway`, `AttachDeviceProviderUseCase`).
 
 ## Plugins embutidos
 
 - **`@nexus/plugin-windows`** — computadores Windows via Agent remoto (WebSocket + pareamento). Sempre ativo.
-- **`@nexus/plugin-tuya`** — dispositivos Tuya/Smart Life (tomadas, interruptores, sensores) via Tuya Cloud API, com polling periódico. Opcional: só ativa se `TUYA_ACCESS_ID`, `TUYA_ACCESS_SECRET` e `TUYA_UID` estiverem definidos (ver `.env.example`). Sem rede local nem Local Key — funciona com o Core hospedado onde for.
+- **`@nexus/plugin-tuya`** — dispositivos Tuya/Smart Life (tomadas, interruptores, sensores) via Tuya Cloud API, com polling periódico. Opcional: só ativa se `TUYA_ACCESS_ID` e `TUYA_ACCESS_SECRET` estiverem definidos e houver ao menos uma conta (via `TUYA_UID` legada ou `provider_accounts` no Postgres). Sem rede local nem Local Key — funciona com o Core hospedado onde for.
+- **`@nexus/plugin-lg-thinq`** — ares-condicionados LG via a API oficial "ThinQ Connect" (Personal Access Token), com polling periódico. Opcional: só ativa se `LGTHINQ_ACCESS_TOKEN`, `LGTHINQ_CLIENT_ID` e `LGTHINQ_COUNTRY_CODE` estiverem definidos (ver `.env.example`). Um PAT é de uma única conta LG — hoje só dá pra conectar uma conta por deploy.
 
 ```
 bun run --filter @nexus/plugin-host dev

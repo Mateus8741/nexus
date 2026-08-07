@@ -45,6 +45,7 @@ import {
   TimerHealthMonitor,
   WebSocketAgentGateway,
 } from "@nexus/infrastructure";
+import { createLgThinqPlugin } from "@nexus/plugin-lg-thinq";
 import { createTuyaPlugin } from "@nexus/plugin-tuya";
 import { createWindowsPlugin } from "@nexus/plugin-windows";
 import {
@@ -78,6 +79,19 @@ const TUYA_UID = process.env.TUYA_UID;
 const TUYA_ENDPOINT = process.env.TUYA_ENDPOINT;
 const TUYA_POLL_INTERVAL_MS = process.env.TUYA_POLL_INTERVAL_MS
   ? Number(process.env.TUYA_POLL_INTERVAL_MS)
+  : undefined;
+
+// LG ThinQ (opcional): mesma lógica do Tuya acima — só ativa se as
+// variáveis obrigatórias estiverem presentes (ver README.md / .env.example).
+// LGTHINQ_ACCESS_TOKEN é um Personal Access Token gerado pelo próprio
+// usuário em connect-pat.lgthinq.com (auto-serviço, sem parceria comercial
+// com a LG) — LGTHINQ_CLIENT_ID é um UUID qualquer, fixo, gerado uma vez.
+const LGTHINQ_ACCESS_TOKEN = process.env.LGTHINQ_ACCESS_TOKEN;
+const LGTHINQ_CLIENT_ID = process.env.LGTHINQ_CLIENT_ID;
+const LGTHINQ_COUNTRY_CODE = process.env.LGTHINQ_COUNTRY_CODE;
+const LGTHINQ_SPACE_ID = process.env.LGTHINQ_SPACE_ID;
+const LGTHINQ_POLL_INTERVAL_MS = process.env.LGTHINQ_POLL_INTERVAL_MS
+  ? Number(process.env.LGTHINQ_POLL_INTERVAL_MS)
   : undefined;
 
 async function bootstrap(): Promise<void> {
@@ -286,6 +300,31 @@ async function bootstrap(): Promise<void> {
     );
   }
 
+  // LG ThinQ: um Personal Access Token é sempre de uma única conta LG (não
+  // existe o conceito de "projeto" compartilhado como no Tuya Cloud
+  // Development) — por isso, diferente do Tuya, não há lista de contas
+  // aqui ainda. LGTHINQ_SPACE_ID (opcional) atribui os dispositivos dessa
+  // conta a um Space específico; sem ela, ficam sem restrição de ambiente.
+  const lgThinqEnabled = Boolean(LGTHINQ_ACCESS_TOKEN && LGTHINQ_CLIENT_ID && LGTHINQ_COUNTRY_CODE);
+  const lgThinqBundle = lgThinqEnabled
+    ? createLgThinqPlugin({
+        accessToken: LGTHINQ_ACCESS_TOKEN as string,
+        clientId: LGTHINQ_CLIENT_ID as string,
+        countryCode: LGTHINQ_COUNTRY_CODE as string,
+        spaceId: LGTHINQ_SPACE_ID,
+        pollIntervalMs: LGTHINQ_POLL_INTERVAL_MS,
+        capabilityRegistry,
+      })
+    : undefined;
+  if (lgThinqBundle) {
+    providers.push(lgThinqBundle.provider);
+    deviceProviderRegistry.register(lgThinqBundle.provider);
+  } else {
+    logger.info(
+      "LG ThinQ plugin desativado — defina LGTHINQ_ACCESS_TOKEN, LGTHINQ_CLIENT_ID e LGTHINQ_COUNTRY_CODE para ativar (ver .env.example).",
+    );
+  }
+
   const source: PluginSource = {
     discover(): PluginCandidate[] {
       const candidates: PluginCandidate[] = [
@@ -293,6 +332,9 @@ async function bootstrap(): Promise<void> {
       ];
       if (tuyaBundle) {
         candidates.push({ source: "built-in:@nexus/plugin-tuya", value: tuyaBundle.plugin });
+      }
+      if (lgThinqBundle) {
+        candidates.push({ source: "built-in:@nexus/plugin-lg-thinq", value: lgThinqBundle.plugin });
       }
       return candidates;
     },
@@ -316,6 +358,9 @@ async function bootstrap(): Promise<void> {
   await attachDeviceProvider.attach(windowsProvider);
   if (tuyaBundle) {
     await attachDeviceProvider.attach(tuyaBundle.provider);
+  }
+  if (lgThinqBundle) {
+    await attachDeviceProvider.attach(lgThinqBundle.provider);
   }
 
   for (const plugin of loadResult.loaded) {

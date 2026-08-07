@@ -1,0 +1,11 @@
+{
+  "id": "nexus.lgthinq",
+  "name": "LG ThinQ",
+  "version": "0.1.0",
+  "description": "Descobre e controla ares-condicionados LG (e outros dispositivos ThinQ que exponham deviceType compatível) via LG ThinQ Connect API oficial (Personal Access Token), via polling — sem depender do app ThinQ nem de rede local.",
+  "author": "Nexus",
+  "capabilities": ["device-adapter"],
+  "engines": {
+    "nexus": "^0.1.0"
+  }
+}
