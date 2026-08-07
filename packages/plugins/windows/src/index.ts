@@ -61,7 +61,12 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     key: "remote-command",
     label: "Comando remoto",
     actions: [
-      { type: "executeCommand", label: "Executar comando", payloadSchema: { command: "string" } },
+      {
+        type: "executeCommand",
+        label: "Executar comando",
+        payloadSchema: { command: "string" },
+        advanced: true,
+      },
     ],
   },
   { key: "metrics", label: "Métricas" },

@@ -2,7 +2,7 @@ import type { Device } from "@nexus/domain";
 import { Activity, Boxes, Cpu, Puzzle } from "lucide-react";
 
 import { ActivityChart } from "@/components/dashboard/activity-chart";
-import { DeviceTable } from "@/components/dashboard/device-table";
+import { DeviceGrid } from "@/components/dashboard/device-grid";
 import { EventFeed } from "@/components/dashboard/event-feed";
 import { ProviderOverview } from "@/components/dashboard/provider-overview";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -98,15 +98,14 @@ export default async function Home() {
         <ProviderOverview providers={providers} devices={devices} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <h2 className="mb-3 text-sm font-medium text-foreground">Dispositivos</h2>
-          <DeviceTable devices={devices} providerName={providerName} capabilities={capabilities} />
-        </div>
-        <div>
-          <h2 className="mb-3 text-sm font-medium text-foreground">Atividade recente</h2>
-          <EventFeed events={events} deviceName={deviceName} />
-        </div>
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-foreground">Dispositivos</h2>
+        <DeviceGrid devices={devices} providerName={providerName} capabilities={capabilities} />
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-foreground">Atividade recente</h2>
+        <EventFeed events={events} deviceName={deviceName} />
       </div>
     </div>
   );

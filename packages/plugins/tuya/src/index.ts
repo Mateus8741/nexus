@@ -57,8 +57,8 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-brightness",
-        label: "Definir brilho",
-        payloadSchema: { value: "number" },
+        label: "Brilho",
+        payloadSchema: { value: { type: "number", min: 0, max: 100, step: 1, unit: "%" } },
       },
     ],
   },
@@ -68,8 +68,8 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-color-temperature",
-        label: "Definir temperatura de cor",
-        payloadSchema: { value: "number" },
+        label: "Temperatura de cor",
+        payloadSchema: { value: { type: "number", min: 0, max: 100, step: 1, unit: "%" } },
       },
     ],
   },
@@ -79,8 +79,12 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-color",
-        label: "Definir cor (HSV)",
-        payloadSchema: { h: "number", s: "number", v: "number" },
+        label: "Cor (HSV)",
+        payloadSchema: {
+          h: { type: "number", min: 0, max: 360, step: 1, unit: "°" },
+          s: { type: "number", min: 0, max: 100, step: 1, unit: "%" },
+          v: { type: "number", min: 0, max: 100, step: 1, unit: "%" },
+        },
       },
     ],
   },
@@ -92,6 +96,7 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
         type: "set-datapoint",
         label: "Definir data point",
         payloadSchema: { code: "string", value: "string" },
+        advanced: true,
       },
     ],
   },

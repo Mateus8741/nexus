@@ -1,4 +1,5 @@
 import type { Device } from "../entities/device";
+import type { CapabilityFieldSchema } from "./capability";
 import type { CapabilityRegistry } from "./capability-registry";
 
 /**
@@ -9,7 +10,8 @@ export interface ResolvedDeviceAction {
   readonly capabilityKey: string;
   readonly actionType: string;
   readonly label: string;
-  readonly payloadSchema?: Readonly<Record<string, "string" | "number" | "boolean">>;
+  readonly payloadSchema?: Readonly<Record<string, CapabilityFieldSchema>>;
+  readonly advanced?: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export function resolveDeviceActions(
         actionType,
         label: schema?.label ?? actionType,
         payloadSchema: schema?.payloadSchema,
+        advanced: schema?.advanced,
       });
     }
   }

@@ -50,8 +50,13 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-mode",
-        label: "Definir modo (ex.: COOL, FAN, HEAT, AIR_DRY)",
-        payloadSchema: { mode: "string" },
+        label: "Modo",
+        // Opções padrão cobrindo os modos mais comuns de ares-condicionados
+        // LG — o dispositivo específico pode não suportar todos (validado
+        // em runtime contra o /profile real, ver assertLegalEnum).
+        payloadSchema: {
+          mode: { type: "string", options: ["COOL", "FAN", "AIR_DRY", "HEAT", "AUTO"] },
+        },
       },
     ],
   },
@@ -61,8 +66,8 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-target-temperature",
-        label: "Definir temperatura (°C)",
-        payloadSchema: { value: "number" },
+        label: "Temperatura",
+        payloadSchema: { value: { type: "number", min: 16, max: 30, step: 0.5, unit: "°C" } },
       },
     ],
   },
@@ -72,8 +77,8 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-fan-speed",
-        label: "Definir velocidade (ex.: LOW, MID, HIGH, AUTO)",
-        payloadSchema: { value: "string" },
+        label: "Velocidade",
+        payloadSchema: { value: { type: "string", options: ["LOW", "MID", "HIGH", "AUTO"] } },
       },
     ],
   },
@@ -83,7 +88,7 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-swing",
-        label: "Ativar/desativar oscilação",
+        label: "Oscilação",
         payloadSchema: { value: "boolean" },
       },
     ],
@@ -94,7 +99,7 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     actions: [
       {
         type: "set-display-light",
-        label: "Ligar/desligar display",
+        label: "Display",
         payloadSchema: { value: "boolean" },
       },
     ],
@@ -107,6 +112,7 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
         type: "set-resource",
         label: "Definir resource/property diretamente",
         payloadSchema: { resource: "string", property: "string", value: "string" },
+        advanced: true,
       },
     ],
   },
