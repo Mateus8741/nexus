@@ -18,6 +18,26 @@ function rowToCapabilities(raw: unknown): DeviceCapability[] {
   );
 }
 
+/**
+ * `state.observedAt` é persistido como parte do jsonb `state` — ao voltar
+ * do Postgres, o driver não sabe que aquele campo era um `Date` (jsonb só
+ * conhece JSON puro), então `observedAt` chega como string ISO, não como
+ * `Date`. Sem essa reconstrução, `toDeviceStateDto()` (que chama
+ * `state.observedAt.toISOString()`) quebra com TypeError pra qualquer
+ * device ainda não re-registrado pelo provider desde o boot (ver
+ * AttachDeviceProviderUseCase.attach(), que reconcilia isso rapidamente,
+ * mas não instantaneamente) — e como é um `.map()` sobre a lista toda,
+ * OS DEMAIS devices também desaparecem da resposta de GET /devices.
+ */
+function rowToState(raw: unknown): DeviceState {
+  const state = raw as { status?: unknown; attributes?: unknown; observedAt?: unknown };
+  return {
+    status: (state.status as DeviceState["status"]) ?? "unknown",
+    attributes: (state.attributes as DeviceState["attributes"]) ?? {},
+    observedAt: state.observedAt instanceof Date ? state.observedAt : new Date(state.observedAt as string),
+  };
+}
+
 function rowToDevice(row: typeof devices.$inferSelect): Device {
   return {
     id: row.id,
@@ -27,7 +47,7 @@ function rowToDevice(row: typeof devices.$inferSelect): Device {
     kind: row.kind,
     capabilities: rowToCapabilities(row.capabilities),
     spaceId: row.spaceId ?? undefined,
-    state: row.state as unknown as DeviceState,
+    state: rowToState(row.state),
     metadata: row.metadata ?? undefined,
   };
 }
