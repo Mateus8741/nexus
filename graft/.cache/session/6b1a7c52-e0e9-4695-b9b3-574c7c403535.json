@@ -1,0 +1,9 @@
+{
+  "lastQuery": "<pasted_content id=\"241b\">\nSet up Trail-code in this repo:\n1. Run `npm install -g @trailhq/trail-code` to install the CLI.\n2. Run `trail init --agents claude` in this repo. It builds the code map and wires Trail-code into Claude Code.\n3. Run `trail status` and tell me what it shows for the code map and learnings.\nThen remind me to restart Claude Code so the next session picks it up.\n</pasted_content id=\"241b\">",
+  "perAgentQuery": {},
+  "graftReads": 0,
+  "sourceReads": 0,
+  "savedTokens": 0,
+  "injectedPointers": [],
+  "nudges": 0
+}
