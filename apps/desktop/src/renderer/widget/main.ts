@@ -1,19 +1,12 @@
-import {
-  applyOptimistic,
-  canPower,
-  categorize,
-  currentTemperature,
-  isOn,
-  planScene,
-  powerRequest,
-  SCENES,
-  type SceneId,
-  targetTemperature,
-} from "../../shared/devices";
-import type { ActionOutcome, ActionRequest, AgentStatus, DeviceView, NexusBridge, Snapshot } from "../../shared/types";
-import { icon } from "../shared/icons";
-import { buildPanel, type Panel } from "./controls";
-import { buildRoom, mountRoom, type RoomId, updateRoom } from "./room";
+import { applyOptimistic, isOn } from "../../shared/devices";
+import type { ActionOutcome, ActionRequest, AgentStatus, DeviceView, NexusBridge, Snapshot, SpaceView } from "../../shared/types";
+import { acState, acModeKey, acRequests, type AcPatch, bindDevices, isLamp, lightRequests, type LightPatch, lightVisual, sceneRequests, tileKind, type Binding } from "./model";
+import { createWorld, type World } from "./home/world";
+import { DEMO_PLAN } from "./home/demo-plan";
+import { normalize } from "./home/plan";
+import { icon } from "./icons";
+import { createPanel } from "./panel";
+import { openMenu } from "./ui";
 
 declare global {
   interface Window {
@@ -23,30 +16,27 @@ declare global {
 
 const api = window.nexus;
 const app = document.getElementById("app") as HTMLElement;
+const plan = normalize(DEMO_PLAN);
 
-/* ------------------------------------------------------------------ state */
+/* ------------------------------------------------------------------ estado */
 
 let snapshot: Snapshot | undefined;
 let agentStatus: AgentStatus = { state: "disabled" };
-let tab = "all";
 let pinned = false;
-let activeScene: SceneId | undefined = readScene();
+let activeScene: string | undefined = readScene();
+let binding: Binding = { light: new Map(), ac: new Map(), room: new Map() };
+let bindingKey = "";
 const overrides = new Map<string, { device: DeviceView; until: number }>();
-const tempTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const cards = new Map<string, HTMLElement>();
-const panels = new Map<string, Panel>();
-const openCards = new Set<string>();
-let visibleIds = new Set<string>();
 
-function readScene(): SceneId | undefined {
+function readScene(): string | undefined {
   try {
-    return (localStorage.getItem("scene") as SceneId | null) ?? undefined;
+    return localStorage.getItem("scene") ?? undefined;
   } catch {
     return undefined;
   }
 }
 
-function writeScene(scene: SceneId | undefined): void {
+function writeScene(scene: string | undefined): void {
   activeScene = scene;
   try {
     if (scene) localStorage.setItem("scene", scene);
@@ -54,15 +44,6 @@ function writeScene(scene: SceneId | undefined): void {
   } catch {
     /* storage indisponível: só perde a persistência */
   }
-}
-
-/* ---------------------------------------------------------------- helpers */
-
-function html<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, inner = ""): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  node.className = cls;
-  node.innerHTML = inner;
-  return node;
 }
 
 function effectiveDevices(): DeviceView[] {
@@ -78,506 +59,271 @@ function effectiveDevices(): DeviceView[] {
   });
 }
 
-function spaceName(device: DeviceView): string {
-  return snapshot?.spaces.find((s) => s.id === device.spaceId)?.name ?? "Geral";
-}
+const spaces = (): SpaceView[] => (snapshot?.spaces ?? []) as SpaceView[];
+const deviceById = (id: string): DeviceView | undefined => effectiveDevices().find((d) => d.id === id);
 
-const controllable = (d: DeviceView): boolean => {
-  const c = categorize(d);
-  return (c === "light" || c === "switch" || c === "climate") && canPower(d);
-};
-
-function tabDevices(devices: DeviceView[]): DeviceView[] {
-  if (tab === "all") return devices;
-  if (tab === "__none") return devices.filter((d) => !d.spaceId);
-  return devices.filter((d) => d.spaceId === tab);
-}
-
-function roomFor(name: string): RoomId | undefined {
-  const n = name.toLowerCase();
-  if (/sala|living|estar/.test(n)) return "living";
-  if (/cozinha|kitchen/.test(n)) return "kitchen";
-  if (/quarto|bed|suíte|suite/.test(n)) return "bedroom";
-  if (/jantar|dining|varanda/.test(n)) return "dining";
-  return undefined;
-}
-
-const fmtTemp = (n: number): string => n.toFixed(1).replace(".", ",");
-
-/* ------------------------------------------------------------------ shell */
-
-app.innerHTML = `
-  <header class="head">
-    <div class="brand"><span class="brand-tile">${icon("home", 20)}</span>
-      <div class="brand-meta"><div class="title" id="title">Nexus</div><div class="status" id="status"><i class="dot"></i><span>—</span></div></div>
-    </div>
-    <div class="head-actions">
-      <button class="round" id="pin" title="Fixar na área de trabalho" aria-label="Fixar na área de trabalho">${icon("pin", 17)}</button>
-      <button class="round" id="settings" title="Configurações" aria-label="Configurações">${icon("sliders", 17)}</button>
-      <button class="round big" id="alloff" title="Desligar tudo" aria-label="Desligar tudo">${icon("power", 20)}</button>
-    </div>
-  </header>
-  <section class="hero" id="hero"><div class="hero-inner" id="hero-inner">${buildRoom()}</div></section>
-  <nav class="scenes" id="scenes"></nav>
-  <nav class="tabs" id="tabs"></nav>
-  <div class="summary"><div class="sum-text" id="sum"></div>
-    <div class="sum-btns"><button class="pill" id="allon">Ligar</button><button class="pill" id="alloff2">Desligar</button></div></div>
-  <main class="list" id="list"></main>
-  <footer class="foot"><span id="conn" class="conn"></span><span id="agent" class="agent"></span></footer>
-  <div class="toast" id="toast" role="status"></div>
-`;
-
-const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
-const roomEl = $("hero-inner").querySelector<HTMLElement>(".room") as HTMLElement;
-mountRoom(roomEl);
-
-for (const scene of SCENES) {
-  const btn = html("button", "scene", `<span class="scene-ico">${icon(scene.icon, 20)}</span><span>${scene.label}</span>`);
-  btn.dataset.scene = scene.id;
-  btn.addEventListener("click", () => runScene(scene.id, btn));
-  $("scenes").append(btn);
-}
-
-/* -------------------------------------------------------------- rendering */
-
-function render(): void {
-  const devices = effectiveDevices();
-  renderHeader(devices);
-  renderRoom(devices);
-  renderTabs(devices);
-  renderSummary(devices);
-  renderList(devices);
-  renderFooter();
-  for (const btn of $("scenes").children) btn.classList.toggle("active", (btn as HTMLElement).dataset.scene === activeScene);
-}
-
-function renderHeader(devices: DeviceView[]): void {
-  $("title").textContent = snapshot?.environmentName ?? "Nexus";
-  const lightsOn = devices.filter((d) => categorize(d) === "light" && isOn(d)).length;
-  const status = $("status");
-  status.classList.toggle("lit", lightsOn > 0);
-  const label = lightsOn === 0 ? "<b>Nenhuma</b> luz acesa" : `<b>${lightsOn}</b> ${lightsOn === 1 ? "luz acesa" : "luzes acesas"}`;
-  const span = status.querySelector("span") as HTMLElement;
-  if (span.innerHTML !== label) span.innerHTML = label;
-}
-
-function renderRoom(devices: DeviceView[]): void {
-  const lit: Record<RoomId, number> = { living: 0, kitchen: 0, bedroom: 0, dining: 0 };
-  const counts: Record<RoomId, { on: number; total: number }> = {
-    living: { on: 0, total: 0 },
-    kitchen: { on: 0, total: 0 },
-    bedroom: { on: 0, total: 0 },
-    dining: { on: 0, total: 0 },
-  };
-  let globalOn = 0;
-  let globalTotal = 0;
-  for (const d of devices) {
-    const c = categorize(d);
-    if (c !== "light" && c !== "switch") continue;
-    globalTotal++;
-    if (isOn(d)) globalOn++;
-    const room = roomFor(spaceName(d));
-    if (room) {
-      counts[room].total++;
-      if (isOn(d)) counts[room].on++;
-    }
+function refreshBinding(): Binding {
+  const devices = snapshot?.devices ?? [];
+  const key = JSON.stringify([devices.map((d) => [d.id, d.name, d.spaceId, d.kind]), spaces().map((s) => [s.id, s.name])]);
+  if (key !== bindingKey) {
+    bindingKey = key;
+    binding = bindDevices(devices, spaces(), plan);
   }
-  const anyMapped = Object.values(counts).some((c) => c.total > 0);
-  for (const room of Object.keys(lit) as RoomId[]) {
-    lit[room] = anyMapped
-      ? counts[room].total
-        ? counts[room].on / counts[room].total
-        : 0
-      : globalTotal
-        ? globalOn / globalTotal
-        : 0;
-  }
-  updateRoom(roomEl, lit, devices.some((d) => categorize(d) === "climate" && isOn(d)));
+  return binding;
 }
 
-function renderTabs(devices: DeviceView[]): void {
-  const host = $("tabs");
-  const spaces = (snapshot?.spaces ?? []).filter((s) => devices.some((d) => d.spaceId === s.id));
-  const entries: { id: string; label: string }[] = [{ id: "all", label: "Tudo" }, ...spaces.map((s) => ({ id: s.id, label: s.name }))];
-  if (devices.some((d) => !d.spaceId) && spaces.length > 0) entries.push({ id: "__none", label: "Geral" });
-  if (!entries.some((e) => e.id === tab)) tab = "all";
-
-  const signature = entries.map((e) => e.id).join("|");
-  if (host.dataset.sig !== signature) {
-    host.dataset.sig = signature;
-    host.replaceChildren(
-      ...entries.map((e, i) => {
-        const chip = html("button", "chip", e.label);
-        chip.dataset.tab = e.id;
-        chip.style.setProperty("--i", String(i));
-        chip.addEventListener("click", () => {
-          tab = e.id;
-          render();
-        });
-        return chip;
-      }),
-    );
-  }
-  for (const chip of host.children) chip.classList.toggle("active", (chip as HTMLElement).dataset.tab === tab);
-}
-
-function renderSummary(devices: DeviceView[]): void {
-  const scoped = tabDevices(devices).filter(controllable);
-  const on = scoped.filter(isOn).length;
-  const name = tab === "all" ? "Casa toda" : (tabLabel() ?? "Ambiente");
-  const text = `${name} · <b>${on}</b> de ${scoped.length} ligados`;
-  const sum = $("sum");
-  if (sum.innerHTML !== text) {
-    sum.innerHTML = text;
-    sum.classList.remove("tick");
-    void sum.offsetWidth;
-    sum.classList.add("tick");
-  }
-}
-
-function tabLabel(): string | undefined {
-  return (document.querySelector(`.chip[data-tab="${CSS.escape(tab)}"]`) as HTMLElement | null)?.textContent ?? undefined;
-}
-
-function iconFor(device: DeviceView): string {
-  switch (categorize(device)) {
-    case "climate":
-      return "snow";
-    case "computer":
-      return "monitor";
-    case "switch":
-      return "plug";
-    case "light":
-      return /teto|ceiling|pendente|pendant/i.test(device.name) ? "ceiling" : /backlight|fita|strip|tv/i.test(device.name) ? "sparkle" : "bulb";
-    default:
-      return "sparkle";
-  }
-}
-
-function createCard(device: DeviceView): HTMLElement {
-  const category = categorize(device);
-  const card = html("div", `card cat-${category}`);
-  card.dataset.id = device.id;
-  card.setAttribute("role", "button");
-  card.tabIndex = 0;
-  card.innerHTML = `<span class="tile">${icon(iconFor(device), 20)}</span>
-    <span class="meta"><span class="name"></span><span class="sub"></span></span>`;
-
-  if (category === "climate") {
-    const stepper = html(
-      "span",
-      "stepper",
-      `<button class="step" data-d="-1" aria-label="Diminuir">${icon("minus", 16)}</button><span class="temp"></span><button class="step" data-d="1" aria-label="Aumentar">${icon("plus", 16)}</button>`,
-    );
-    stepper.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLElement>(".step");
-      if (!btn) return;
-      e.stopPropagation();
-      adjustTemperature(device.id, Number(btn.dataset.d));
-    });
-    const power = html("button", "power", icon("power", 18));
-    power.setAttribute("aria-label", "Ligar/desligar");
-    card.append(stepper, power);
-  } else if (category === "computer") {
-    card.append(html("span", "power lock", icon("lock", 17)));
-  }
-
-  const more = html("button", "more", icon("chevron", 16));
-  more.setAttribute("aria-label", "Mais controles");
-  more.setAttribute("aria-expanded", "false");
-  more.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const open = !openCards.has(device.id);
-    if (open) openCards.add(device.id);
-    else openCards.delete(device.id);
-    card.classList.toggle("open", open);
-    more.setAttribute("aria-expanded", String(open));
-    if (open && !panels.has(device.id)) {
-      const current = effectiveDevices().find((d) => d.id === device.id) ?? device;
-      const panel = buildPanel(current, { run: runOne });
-      panels.set(device.id, panel);
-      card.append(panel.el);
-    }
-  });
-  card.append(more);
-
-  const activate = (): void => {
-    const current = effectiveDevices().find((d) => d.id === device.id);
-    if (!current) return;
-    if (categorize(current) === "computer") void send([{ deviceId: current.id, type: "lock" }], "Bloqueando…");
-    else toggle(current);
-  };
-  card.addEventListener("click", activate);
-  card.addEventListener("keydown", (e) => {
-    if (e.target !== card) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      activate();
-    }
-  });
-  card.addEventListener("pointerdown", (e) => {
-    const r = card.getBoundingClientRect();
-    card.style.setProperty("--rx", `${e.clientX - r.left}px`);
-    card.style.setProperty("--ry", `${e.clientY - r.top}px`);
-  });
-  return card;
-}
-
-function updateCard(card: HTMLElement, device: DeviceView): void {
-  const category = categorize(device);
-  const on = isOn(device);
-  card.classList.toggle("on", on && category !== "computer");
-  card.classList.toggle("offline", device.status === "offline");
-  panels.get(device.id)?.update(device);
-  const name = card.querySelector(".name") as HTMLElement;
-  if (name.textContent !== device.name) name.textContent = device.name;
-
-  let sub: string;
-  if (device.status === "offline") sub = `Offline · ${spaceName(device)}`;
-  else if (category === "computer") sub = `Online · ${spaceName(device)}`;
-  else if (category === "climate") {
-    const room = currentTemperature(device);
-    sub = `${on ? "Ligado" : "Desligado"}${room !== undefined ? ` · ${fmtTemp(room)}°` : ""}`;
-  } else sub = `${on ? "Ligado" : "Desligado"} · ${spaceName(device)}`;
-  const subEl = card.querySelector(".sub") as HTMLElement;
-  if (subEl.textContent !== sub) subEl.textContent = sub;
-
-  if (category === "climate") {
-    const target = targetTemperature(device);
-    (card.querySelector(".temp") as HTMLElement).textContent = target !== undefined ? `${Math.round(target)}°` : "—";
-    (card.querySelector(".power") as HTMLElement).classList.toggle("on", on);
-  }
-}
-
-let lastLayout = "";
-
-function renderList(devices: DeviceView[]): void {
-  const list = $("list");
-  const scoped = tabDevices(devices).filter((d) => categorize(d) !== "sensor");
-
-  if (snapshot?.mode === "unconfigured") return renderEmpty(list, "Conecte ao seu Core", "Informe a URL do Core e uma API key para ver seus dispositivos.", "Abrir configurações");
-  if (snapshot?.connection === "error" && devices.length === 0) return renderEmpty(list, "Sem conexão com o Core", snapshot.error ?? "Verifique a URL e a rede.", "Tentar novamente", () => void api.refresh());
-  if (scoped.length === 0) return renderEmpty(list, "Nenhum dispositivo", "Adicione integrações no Dashboard para vê-los aqui.");
-
-  list.querySelector(".empty")?.remove();
-
-  const groups = new Map<string, DeviceView[]>();
-  const order: string[] = [];
-  for (const device of scoped) {
-    const key = spaceName(device);
-    if (!groups.has(key)) {
-      groups.set(key, []);
-      order.push(key);
-    }
-    groups.get(key)?.push(device);
-  }
-
-  const nextVisible = new Set(scoped.map((d) => d.id));
-  for (const device of scoped) {
-    let card = cards.get(device.id);
-    if (!card) {
-      card = createCard(device);
-      cards.set(device.id, card);
-    }
-    updateCard(card, device);
-  }
-
-  // Só remonta o DOM quando a estrutura muda: trocar os cards de lugar a cada
-  // polling cancela cliques em andamento (mousedown/up em elemento reparentado).
-  // Os cards só podem ser movidos para as novas seções quando elas vão ser
-  // montadas — senão ficam órfãos em grids descartados e a lista "some".
-  const layout = order.map((key) => `${key}:${(groups.get(key) ?? []).map((d) => d.id).join(",")}`).join("|");
-  if (layout !== lastLayout || list.querySelector(".group") === null) {
-    lastLayout = layout;
-    let enterIndex = 0;
-    const sections: HTMLElement[] = [];
-    for (const key of order) {
-      const section = html("section", "group");
-      section.append(html("h3", "group-title", key));
-      const grid = html("div", "grid");
-      for (const device of groups.get(key) ?? []) {
-        const card = cards.get(device.id) as HTMLElement;
-        if (!visibleIds.has(device.id)) {
-          card.classList.remove("enter");
-          void card.offsetWidth;
-          card.style.setProperty("--e", String(enterIndex++));
-          card.classList.add("enter");
-        }
-        grid.append(card);
-      }
-      section.append(grid);
-      sections.push(section);
-    }
-    list.replaceChildren(...sections);
-  }
-  visibleIds = nextVisible;
-}
-
-function renderEmpty(list: HTMLElement, title: string, text: string, action?: string, onAction?: () => void): void {
-  visibleIds = new Set();
-  const box = html("div", "empty", `<div class="empty-orb">${icon("sparkle", 26)}</div><h3>${title}</h3><p>${text}</p>`);
-  if (action) {
-    const btn = html("button", "cta", action);
-    btn.addEventListener("click", onAction ?? (() => api.openSettings()));
-    box.append(btn);
-  }
-  list.replaceChildren(box);
-}
-
-function renderFooter(): void {
-  const conn = $("conn");
-  const s = snapshot;
-  const text =
-    s?.mode === "demo" ? "Modo demonstração" : s?.mode === "unconfigured" ? "Não configurado" : s?.connection === "ok" ? "Conectado ao Core" : s?.connection === "error" ? "Sem conexão" : "Conectando…";
-  conn.className = `conn ${s?.mode === "demo" || s?.connection === "ok" ? "ok" : s?.connection === "error" ? "bad" : ""}`;
-  conn.innerHTML = `<i class="dot"></i>${text}`;
-
-  const labels: Record<AgentStatus["state"], string> = {
-    disabled: "Agent desligado",
-    starting: "Agent iniciando…",
-    pending: "Agent aguardando aprovação",
-    online: "Este PC · online",
-    offline: "Agent offline",
-    rejected: "Agent rejeitado",
-  };
-  const agent = $("agent");
-  agent.textContent = labels[agentStatus.state];
-  agent.title = agentStatus.detail ?? "";
-  agent.dataset.state = agentStatus.state;
-}
-
-/* ---------------------------------------------------------------- actions */
-
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-function toast(message: string, bad = false): void {
-  const el = $("toast");
-  el.textContent = message;
-  el.classList.toggle("bad", bad);
-  el.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), bad ? 6000 : 2200);
-}
+/* ------------------------------------------------------------------ ações */
 
 function applyLocal(request: ActionRequest): void {
-  const base = effectiveDevices().find((d) => d.id === request.deviceId);
+  const base = deviceById(request.deviceId);
   if (!base) return;
-  overrides.set(base.id, { device: applyOptimistic(base, request.type, request.payload), until: Date.now() + 3500 });
+  overrides.set(base.id, { device: applyOptimistic(base, request.type, request.payload), until: Date.now() + 4000 });
 }
 
-async function runOne(request: ActionRequest): Promise<ActionOutcome> {
+const POWER = new Set(["turn_on", "turn_off", "toggle"]);
+const pending = new Map<string, ActionRequest>();
+let flushTimer: ReturnType<typeof setTimeout> | undefined;
+let lastFlush = 0;
+let toggleSeq = 0;
+
+/**
+ * Um comando por dispositivo e tipo por vez: o que muda enquanto o anterior está em voo vira um único
+ * envio seguinte. Arrastar um slider custa poucas requisições em vez de dezenas.
+ */
+function enqueue(requests: ActionRequest[]): void {
+  for (const r of requests) {
+    const key = r.type === "toggle" ? `${r.deviceId}|toggle|${toggleSeq++}` : `${r.deviceId}|${POWER.has(r.type) ? "power" : r.type}`;
+    pending.set(key, r);
+  }
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => void flush(), Math.max(0, 260 - (Date.now() - lastFlush)));
+}
+
+async function flush(): Promise<void> {
+  flushTimer = undefined;
+  lastFlush = Date.now();
+  const batch = [...pending.values()];
+  pending.clear();
+  // Ligar antes de regular: o Core executa cada lote em paralelo.
+  const waves = [batch.filter((r) => POWER.has(r.type)), batch.filter((r) => !POWER.has(r.type))];
+  for (const wave of waves) {
+    if (wave.length === 0) continue;
+    const outcomes = await api.runActions(wave);
+    const failed = outcomes.filter((o) => !o.success);
+    if (failed.length > 0) {
+      for (const f of failed) overrides.delete(f.deviceId);
+      panel.toast(`${deviceById(failed[0]?.deviceId ?? "")?.name ?? "Device"}: ${failed[0]?.error ?? "the change was refused"}`, true);
+      render();
+    }
+  }
+}
+
+function commit(requests: ActionRequest[], message?: string): void {
+  if (requests.length === 0) return;
+  for (const r of requests) applyLocal(r);
+  enqueue(requests);
+  render();
+  if (message) panel.toast(message);
+}
+
+async function run(request: ActionRequest): Promise<ActionOutcome> {
   const [outcome] = await api.runActions([request]);
-  const result = outcome ?? { deviceId: request.deviceId, success: false, error: "Sem resposta." };
-  if (!result.success) toast(result.error ?? "Falha ao executar a ação.", true);
+  const result = outcome ?? { deviceId: request.deviceId, success: false, error: "No response." };
+  if (!result.success) panel.toast(result.error ?? "The action failed.", true);
   return result;
 }
 
-async function send(requests: ActionRequest[], message?: string): Promise<void> {
-  if (requests.length === 0) return;
-  for (const r of requests) applyLocal(r);
-  render();
-  if (message) toast(message);
-  const outcomes = await api.runActions(requests);
-  const failed = outcomes.filter((o) => !o.success);
-  if (failed.length > 0) {
-    for (const f of failed) overrides.delete(f.deviceId);
-    toast(failed[0]?.error ?? "Falha ao executar a ação.", true);
+function setLight(id: string, patch: LightPatch): void {
+  const d = deviceById(id);
+  if (!d) return;
+  if (d.status === "offline") return panel.toast(`${d.name} is offline`, true);
+  writeScene(undefined);
+  commit(lightRequests(d, patch));
+}
+
+function setAC(id: string, patch: AcPatch): void {
+  const d = deviceById(id);
+  if (!d) return;
+  if (d.status === "offline") return panel.toast(`${d.name} is offline`, true);
+  commit(acRequests(d, patch));
+}
+
+function lampsIn(spaceId: string): DeviceView[] {
+  return effectiveDevices().filter((d) => tileKind(d) === "light" && isLamp(d) && (spaceId === "all" || (spaceId === "__none" ? !d.spaceId : d.spaceId === spaceId)));
+}
+
+function bulk(on: boolean, spaceId: string): void {
+  const requests = lampsIn(spaceId)
+    .filter((d) => d.status !== "offline")
+    .flatMap((d) => lightRequests(d, { on }));
+  writeScene(undefined);
+  if (requests.length === 0) {
     render();
+    return panel.toast(on ? "Everything is already on" : "Everything is already off");
   }
+  commit(requests);
 }
 
-function toggle(device: DeviceView): void {
-  if (device.status === "offline") return toast(`${device.name} está offline`, true);
-  const request = powerRequest(device, !isOn(device));
-  if (!request) return;
+function toggleEverything(): void {
+  const devices = effectiveDevices();
+  const anyOn = devices.some((d) => (tileKind(d) === "light" && isLamp(d) && isOn(d)) || (tileKind(d) === "ac" && isOn(d)));
   writeScene(undefined);
-  void send([request]);
+  const requests = devices
+    .filter((d) => d.status !== "offline")
+    .flatMap((d) => {
+      const kind = tileKind(d);
+      if (kind === "light" && isLamp(d)) return lightRequests(d, { on: !anyOn });
+      // Ligar "tudo" acende as luzes; os ACs só são desligados (como no house-control).
+      if (kind === "ac" && anyOn) return acRequests(d, { on: false });
+      return [];
+    });
+  commit(requests, requests.length ? undefined : "Nothing to change");
 }
 
-function adjustTemperature(id: string, delta: number): void {
-  const device = effectiveDevices().find((d) => d.id === id);
-  if (!device) return;
-  const next = Math.min(30, Math.max(16, Math.round(targetTemperature(device) ?? 24) + delta));
-  applyLocal({ deviceId: id, type: "set-target-temperature", payload: { value: next } });
-  render();
-  clearTimeout(tempTimers.get(id));
-  tempTimers.set(
-    id,
-    setTimeout(() => void api.runActions([{ deviceId: id, type: "set-target-temperature", payload: { value: next } }]), 450),
-  );
-}
-
-function bulk(on: boolean): void {
-  const scoped = tabDevices(effectiveDevices()).filter(controllable);
-  const requests = scoped
-    .filter((d) => isOn(d) !== on)
-    .map((d) => powerRequest(d, on))
-    .filter((r): r is ActionRequest => r !== undefined);
-  writeScene(undefined);
-  if (requests.length === 0) return toast(on ? "Tudo já está ligado" : "Tudo já está desligado");
-  void send(requests, on ? "Ligando tudo…" : "Desligando tudo…");
-}
-
-function runScene(id: SceneId, button: HTMLElement): void {
-  const requests = planScene(id, effectiveDevices());
-  const label = SCENES.find((s) => s.id === id)?.label ?? id;
-  button.classList.remove("burst");
-  void button.offsetWidth;
-  button.classList.add("burst");
+function runScene(id: string): void {
+  const requests = sceneRequests(id, effectiveDevices(), refreshBinding(), plan);
+  const name = plan.scenes.find((s) => s.id === id)?.name ?? id;
   writeScene(id);
   if (requests.length === 0) {
     render();
-    return toast(`Cena ${label} já aplicada`);
+    return panel.toast(`${name} is already set`);
   }
-  void send(requests, `Cena ${label} · ${requests.length} ${requests.length === 1 ? "ação" : "ações"}`);
+  commit(requests, `${name} · ${requests.length} ${requests.length === 1 ? "action" : "actions"}`);
 }
 
-/* ------------------------------------------------------------------ wiring */
+/* ------------------------------------------------------------------ painel */
 
-$("pin").addEventListener("click", () => void api.setPinned(!pinned));
-$("settings").addEventListener("click", () => api.openSettings());
-$("alloff").addEventListener("click", () => {
-  const everything = effectiveDevices().filter(controllable).filter(isOn);
-  const requests = everything.map((d) => powerRequest(d, false)).filter((r): r is ActionRequest => r !== undefined);
-  writeScene(undefined);
-  void send(requests, requests.length ? "Desligando tudo…" : "Tudo já está desligado");
+function emptyState() {
+  if (snapshot?.mode === "unconfigured") return { title: "Connect to your Core", text: "Enter the Core URL and an API key to see your devices.", action: "Open settings", onAction: () => api.openSettings() };
+  if (snapshot?.connection === "error" && (snapshot.devices.length ?? 0) === 0) return { title: "Can't reach the Core", text: snapshot.error ?? "Check the URL and the network.", action: "Try again", onAction: () => void api.refresh() };
+  if (snapshot && snapshot.devices.filter((d) => tileKind(d)).length === 0) return { title: "No devices", text: "Add integrations in the Dashboard to see them here." };
+  return undefined;
+}
+
+let world: World | undefined;
+
+const panel = createPanel(app, {
+  plan,
+  devices: effectiveDevices,
+  spaces,
+  binding: refreshBinding,
+  scene: () => activeScene,
+  empty: emptyState,
+  title: () => snapshot?.environmentName || plan.name,
+  setLight,
+  toggleLight(id) {
+    const d = deviceById(id);
+    if (!d) return;
+    const planId = refreshBinding().light.get(id);
+    if (planId) world?.bump(planId);
+    setLight(id, { on: !isOn(d) });
+  },
+  setAC,
+  bulk,
+  toggleEverything,
+  runScene,
+  run,
+  openMenu: (anchor) => openMenu(panel.anchorMenu, anchor, menuItems()),
+  focus: (target) => world?.focus(target),
 });
-$("allon").addEventListener("click", () => bulk(true));
-$("alloff2").addEventListener("click", () => bulk(false));
+
+function menuItems() {
+  const s = snapshot;
+  const connection = s?.mode === "demo" ? "Demo mode" : s?.mode === "unconfigured" ? "Not configured" : s?.connection === "ok" ? "Connected to Core" : s?.connection === "error" ? "No connection" : "Connecting…";
+  const agent: Record<AgentStatus["state"], string> = {
+    disabled: "Agent off",
+    starting: "Agent starting…",
+    pending: "Agent awaiting approval",
+    online: "This PC · online",
+    offline: "Agent offline",
+    rejected: "Agent rejected",
+  };
+  return [
+    { label: connection, info: true },
+    { label: agent[agentStatus.state], info: true },
+    "-" as const,
+    { label: pinned ? "Unpin (back to tray)" : "Pin to desktop", icon: pinned ? icon("check", 16, 2.4) : null, action: () => void api.setPinned(!pinned) },
+    { label: "Refresh", action: () => void api.refresh() },
+    { label: "Settings…", action: () => api.openSettings() },
+    "-" as const,
+    { label: "Quit Nexus", action: () => api.quit() },
+  ];
+}
+
+/* ------------------------------------------------------------------ 3D */
+
+const lastVisual = new Map<string, string>();
+
+function syncWorld(): void {
+  if (!world) return;
+  const devices = effectiveDevices();
+  const b = refreshBinding();
+  const byDevice = new Map(devices.map((d) => [d.id, d]));
+  const deviceFor = (map: Map<string, string>, planId: string): DeviceView | undefined => {
+    for (const [deviceId, pid] of map) if (pid === planId) return byDevice.get(deviceId);
+    return undefined;
+  };
+  // Vinculadas refletem o dispositivo; as demais (decorativas) ficam apagadas — nunca simulamos estado.
+  for (const l of plan.lights) {
+    const d = deviceFor(b.light, l.id);
+    const visual = d ? lightVisual(d) : { level: 0, temp: 3000, color: null };
+    const key = JSON.stringify(visual);
+    if (lastVisual.get(l.id) === key) continue;
+    lastVisual.set(l.id, key);
+    world.setLight(l.id, visual);
+  }
+  for (const a of plan.acs) {
+    const d = deviceFor(b.ac, a.id);
+    const s = d ? acState(d) : undefined;
+    const visual = { on: s?.on ?? false, mode: acModeKey(s?.mode), fan: s?.fan ?? "auto", swing: s?.swing ?? "swing", sleep: s?.sleep ?? false };
+    const key = JSON.stringify(visual);
+    if (lastVisual.get(a.id) === key) continue;
+    lastVisual.set(a.id, key);
+    world.setAC(a.id, visual);
+  }
+}
+
+try {
+  world = createWorld(panel.canvas, plan, {
+    onHover: (hit) => panel.showTooltip(hit),
+    onPick: (target) => {
+      if (target) panel.pick(target);
+    },
+  });
+  world.setInsets(62, 50);
+  panel.attach();
+} catch (error) {
+  // Sem WebGL o painel continua útil: só o modelo 3D some.
+  console.error(error);
+  panel.card.classList.remove("booting");
+  panel.card.classList.add("no-3d");
+}
+
+/* ------------------------------------------------------------------ render */
+
+function render(): void {
+  panel.update();
+  syncWorld();
+}
+
+/* ------------------------------------------------------------------ eventos */
 
 function setPinnedUi(value: boolean): void {
   pinned = value;
-  $("pin").classList.toggle("active", value);
-  $("pin").title = value ? "Soltar (voltar para a bandeja)" : "Fixar na área de trabalho";
   app.classList.toggle("is-pinned", value);
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !pinned) api.hideWidget();
+  if (e.key === "Escape" && !panel.closeSheet() && !pinned) api.hideWidget();
 });
 
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") return;
-  app.classList.remove("enter");
-  void app.offsetWidth;
-  app.classList.add("enter");
+const show = (): void => {
+  world?.setRunning(true);
+  world?.intro();
   void api.refresh();
-});
-
-// Parallax leve da cena conforme o ponteiro.
-const hero = $("hero");
-hero.addEventListener("pointermove", (e) => {
-  const r = hero.getBoundingClientRect();
-  const x = (e.clientX - r.left) / r.width - 0.5;
-  const y = (e.clientY - r.top) / r.height - 0.5;
-  hero.style.setProperty("--tx", `${(x * 10).toFixed(2)}px`);
-  hero.style.setProperty("--ty", `${(y * 6).toFixed(2)}px`);
-  hero.style.setProperty("--rot", `${(x * 2).toFixed(2)}deg`);
-});
-hero.addEventListener("pointerleave", () => {
-  hero.style.setProperty("--tx", "0px");
-  hero.style.setProperty("--ty", "0px");
-  hero.style.setProperty("--rot", "0deg");
-});
+};
+const hide = (): void => world?.setRunning(false);
+document.addEventListener("visibilitychange", () => (document.hidden ? hide() : show()));
 
 // Re-render periódico só para expirar overrides otimistas.
 setInterval(() => {
@@ -594,15 +340,19 @@ api.onSnapshot((next) => {
 });
 api.onAgentStatus((s) => {
   agentStatus = s;
-  renderFooter();
 });
 api.onPinned(setPinnedUi);
+
+window.addEventListener("beforeunload", () => world?.dispose());
 
 void (async () => {
   const [s, a, config] = await Promise.all([api.getSnapshot(), api.getAgentStatus(), api.getConfig()]);
   snapshot = s;
   agentStatus = a;
   setPinnedUi(config.pinned);
-  app.classList.add("enter");
   render();
+  if (!document.hidden) {
+    world?.setRunning(true);
+    world?.intro();
+  }
 })();

@@ -17,6 +17,7 @@
     "@nexus/db": "workspace:*",
     "@nexus/domain": "workspace:*",
     "@nexus/infrastructure": "workspace:*",
+    "@nexus/plugin-homeassistant": "workspace:*",
     "@nexus/plugin-lg-thinq": "workspace:*",
     "@nexus/plugin-tuya": "workspace:*",
     "@nexus/plugin-windows": "workspace:*",

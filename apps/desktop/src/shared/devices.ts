@@ -48,6 +48,21 @@ export function applyOptimistic(device: DeviceView, type: string, payload?: Reco
     attributes.targetTemperature = payload.value;
     return { ...device, attributes };
   }
+  // Luz: brilho / temperatura de cor em % (mesmo contrato do plugin Tuya) e cor HSV.
+  if ((type === "set-brightness" || type === "set-color-temperature") && typeof payload?.value === "number") {
+    const codes = type === "set-brightness" ? ["bright_value_v2", "bright_value"] : ["temp_value_v2", "temp_value"];
+    const code = codes.find((c) => c in attributes) ?? (codes[0] as string);
+    attributes[code] = Math.round((payload.value / 100) * (code.endsWith("_v2") ? 1000 : 255));
+    if ("work_mode" in attributes) attributes.work_mode = "white";
+    return { ...device, attributes };
+  }
+  if (type === "set-color" && typeof payload?.h === "number" && typeof payload.s === "number" && typeof payload.v === "number") {
+    const code = ["colour_data_v2", "colour_data"].find((c) => c in attributes) ?? "colour_data_v2";
+    const max = code.endsWith("_v2") ? 1000 : 255;
+    attributes[code] = JSON.stringify({ h: Math.round(payload.h), s: Math.round((payload.s / 100) * max), v: Math.round((payload.v / 100) * max) });
+    attributes.work_mode = "colour";
+    return { ...device, attributes };
+  }
   const nextOn = type === "turn_on" ? true : type === "turn_off" ? false : type === "toggle" ? !isOn(device) : undefined;
   if (nextOn === undefined) return device;
   if (typeof attributes.power === "string") attributes.power = nextOn ? "POWER_ON" : "POWER_OFF";

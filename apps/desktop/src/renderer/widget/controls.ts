@@ -178,7 +178,7 @@ export function buildPanel(initial: DeviceView, hooks: PanelHooks): Panel {
     const sec = node("div", "sec color");
     sec.append(node("div", "sec-title", "Cor"));
     const body = node("div", "color-body");
-    const swatch = node("span", "swatch");
+    const swatch = node("span", "color-preview");
     const stack = node("div", "color-stack");
     let h = 0;
     let s = 100;

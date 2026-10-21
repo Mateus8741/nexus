@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { type ReactNode, useMemo, useRef } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
@@ -50,8 +50,32 @@ function getGlowTexture(): THREE.CanvasTexture {
   return glowTexture;
 }
 
+/** Pouca CPU/memória, economia de dados ou pedido de menos movimento: usa a cena leve. */
+function isWeakDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  const nav = navigator as Navigator & {
+    deviceMemory?: number;
+    connection?: { saveData?: boolean };
+  };
+  return (
+    (nav.hardwareConcurrency ?? 8) <= 4 ||
+    (nav.deviceMemory ?? 8) <= 4 ||
+    nav.connection?.saveData === true ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+const colorCache = new Map<string, THREE.Color | null>();
 function cssToColor(css?: string): THREE.Color | null {
   if (!css) return null;
+  const cached = colorCache.get(css);
+  if (cached !== undefined) return cached;
+  const color = resolveCssColor(css);
+  colorCache.set(css, color);
+  return color;
+}
+
+function resolveCssColor(css: string): THREE.Color | null {
   try {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 1;
@@ -722,7 +746,7 @@ const FIT_FOV = 24;
 const FIT_ASPECT = 552 / 430;
 
 const PENDANTS = [
-  { key: "living", x: 2.8, z: 2.9, shadow: true },
+  { key: "living", x: 2.8, z: 2.9, shadow: false }, // sombra de ponto = 6 passes por quadro
   { key: "bed", x: 7.0, z: 1.7, shadow: false },
   { key: "dining", x: 2.65, z: 6.0, shadow: false },
   { key: "office", x: 6.9, z: 5.0, shadow: false },
@@ -849,15 +873,17 @@ function Scene({
 export function IsoRoom(props: IsoRoomProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const visible = useSceneVisible(wrapRef);
+  const [weak] = useState(isWeakDevice);
+  const lite = props.lite || weak;
 
   return (
     <div ref={wrapRef} className="relative mx-auto aspect-[552/430] w-full max-w-[620px]">
       <Canvas
-        shadows={props.lite ? false : "percentage"}
+        shadows={lite ? false : "percentage"}
         frameloop="demand"
-        dpr={[1, 1.5]}
+        dpr={lite ? 1 : [1, 1.25]}
         camera={{ position: [17, 13.5, 17.5], fov: 22, near: 0.1, far: 80 }}
-        gl={{ antialias: true, alpha: true }}
+        gl={{ antialias: !lite, alpha: true, powerPreference: "default" }}
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping;
           gl.toneMappingExposure = 0.85;
@@ -865,7 +891,7 @@ export function IsoRoom(props: IsoRoomProps) {
         aria-label="Ilustração 3D do ambiente"
       >
         <FrameDriver active={visible} fps={30} />
-        <Scene {...props} />
+        <Scene {...props} lite={lite} />
       </Canvas>
     </div>
   );
