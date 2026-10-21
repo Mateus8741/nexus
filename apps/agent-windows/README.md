@@ -4,6 +4,8 @@ Processo Node.js standalone, separado do Core (`apps/plugin-host`), que roda NA 
 
 Depende só de `@nexus/agent-protocol` (o formato das mensagens) e da lib `ws` — nada do resto do monorepo Nexus. Isso é proposital: no futuro este processo pode ser reescrito em outra linguagem (Go, Rust, C#) como um serviço Windows de verdade, sem que nada em `@nexus/agent-protocol` precise mudar.
 
+> **Instalação recomendada:** use o [Nexus Desktop](../desktop/README.md) (`.exe`/`.dmg`) — ele embute este Agent, funciona também no macOS e traz o widget. Este pacote continua sendo o binário headless/serviço.
+
 ## Rodando
 
 ```

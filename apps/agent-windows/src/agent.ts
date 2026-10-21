@@ -205,6 +205,7 @@ export class WindowsAgent {
     const delay = this.options.reconnectDelayMs ?? 5_000;
     console.warn(`[agent-windows] desconectado do Core, tentando reconectar em ${delay}ms...`);
     setTimeout(() => {
+      if (this.stopped) return;
       this.connect();
       // Se já temos token, startOperationalLoops após open acontece quando
       // o Core aceitar — o bridge só forwarda após token válido. Ligamos

@@ -74,8 +74,35 @@ export class WindowsSystemActions implements SystemActions {
   }
 }
 
+/** Implementação real para macOS (Nexus Desktop). */
+export class MacSystemActions implements SystemActions {
+  async shutdown(): Promise<void> {
+    await execAsync(`osascript -e 'tell app "System Events" to shut down'`);
+  }
+
+  async restart(): Promise<void> {
+    await execAsync(`osascript -e 'tell app "System Events" to restart'`);
+  }
+
+  async lock(): Promise<void> {
+    await execAsync("pmset displaysleepnow");
+  }
+
+  async executeCommand(command: string): Promise<string> {
+    try {
+      const { stdout, stderr } = await execAsync(command, { encoding: "utf8" });
+      return combineOutput(stdout, stderr);
+    } catch (error) {
+      const streams = readExecStreams(error);
+      const output = combineOutput(streams.stdout, streams.stderr);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new CommandExecutionError(message, output);
+    }
+  }
+}
+
 /**
- * Usada quando o processo não está rodando em Windows (dev/teste — inclui
+ * Usada quando o processo não está rodando em Windows nem macOS (dev/teste — inclui
  * este ambiente de desenvolvimento). Nunca executa nada de verdade, só
  * simula sucesso: existe para permitir validar todo o resto da arquitetura
  * (registro, heartbeat, protocolo, correlação de ações por requestId) sem
@@ -91,5 +118,9 @@ export class SimulatedSystemActions implements SystemActions {
 }
 
 export function createSystemActions(): SystemActions {
-  return process.platform === "win32" ? new WindowsSystemActions() : new SimulatedSystemActions();
+  if (process.platform === "win32") return new WindowsSystemActions();
+  if (process.platform === "darwin" && process.env.NEXUS_AGENT_SIMULATE !== "1") {
+    return new MacSystemActions();
+  }
+  return new SimulatedSystemActions();
 }

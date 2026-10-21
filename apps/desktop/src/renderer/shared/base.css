@@ -1,0 +1,41 @@
+:root {
+  --bg-0: #050810;
+  --bg-1: #0a1024;
+  --bg-2: #101a3a;
+  --ink: #eaf0ff;
+  --ink-dim: #8b97b8;
+  --ink-faint: #5a6689;
+  --line: rgba(160, 185, 255, 0.14);
+  --line-strong: rgba(150, 185, 255, 0.34);
+  --glass: rgba(120, 150, 255, 0.07);
+  --glass-hi: rgba(130, 165, 255, 0.14);
+  --accent: #6ea2ff;
+  --accent-2: #a98bff;
+  --glow: rgba(110, 162, 255, 0.55);
+  --warm: #ffc873;
+  --ok: #4ade9a;
+  --bad: #ff6b81;
+  --spring: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --ease: cubic-bezier(0.22, 0.8, 0.2, 1);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; -webkit-font-smoothing: antialiased; }
+
+html, body {
+  height: 100%;
+  background: transparent;
+  color: var(--ink);
+  font: 13px/1.35 -apple-system, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ico { display: block; flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

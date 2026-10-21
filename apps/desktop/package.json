@@ -1,0 +1,28 @@
+{
+  "name": "@nexus/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nexus Desktop \u2014 agent + widget para Windows e macOS",
+  "author": "Nexus",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "bun run build && electron .",
+    "build": "bun run scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "dist:mac": "bun run build && electron-builder --mac --publish never",
+    "dist:win": "bun run build && electron-builder --win --publish never",
+    "dist": "bun run build && electron-builder --mac --win --publish never"
+  },
+  "devDependencies": {
+    "@nexus/agent-protocol": "workspace:*",
+    "@nexus/agent-windows": "workspace:*",
+    "@nexus/typescript-config": "workspace:*",
+    "@types/node": "^20",
+    "@types/ws": "^8.5.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "typescript": "^5",
+    "ws": "^8.18.0"
+  }
+}

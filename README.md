@@ -10,7 +10,8 @@ Monorepo gerenciado com [Bun workspaces](https://bun.sh/docs/install/workspaces)
 apps/
   web/            # Next.js — Dashboard autenticado
   plugin-host/    # Core (HTTP + WebSocket + Better Auth)
-  agent-windows/  # Agent remoto Windows
+  agent-windows/  # Agent remoto Windows (headless; também embutido no desktop)
+  desktop/        # Nexus Desktop — Agent + widget (Windows .exe / macOS .dmg)
 packages/
   domain/         # Camada de Domínio
   application/    # Camada de Aplicação

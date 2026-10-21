@@ -1,0 +1,48 @@
+appId: br.com.nexus.desktop
+productName: Nexus
+copyright: Nexus
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - assets/**
+  - package.json
+asar: true
+npmRebuild: false
+# Tudo é empacotado pelo esbuild (scripts/build.ts); nada de node_modules no app.
+
+mac:
+  category: public.app-category.utilities
+  icon: build/icon.png
+  target:
+    - { target: dmg, arch: [arm64, x64] }
+  artifactName: Nexus-${version}-${arch}.${ext}
+  identity: null # sem assinatura — ver README (Gatekeeper)
+  extendInfo:
+    LSUIElement: true # app de menu bar: sem ícone no Dock
+    NSAppleEventsUsageDescription: O Nexus usa eventos do sistema para desligar, reiniciar e bloquear este Mac quando você pedir.
+dmg:
+  background: build/dmg-background.png
+  iconSize: 96
+  window: { width: 660, height: 400 }
+  contents:
+    - { x: 180, y: 200, type: file }
+    - { x: 480, y: 200, type: link, path: /Applications }
+
+win:
+  icon: build/icon.png
+  target:
+    - { target: nsis, arch: [x64] }
+  signAndEditExecutable: false # sem wine/certificado ao compilar no Mac; ver README
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Nexus
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  artifactName: Nexus-Setup-${version}.${ext}
+  uninstallDisplayName: Nexus Desktop

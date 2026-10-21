@@ -1,0 +1,41 @@
+name: desktop-release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+            artifact: Nexus-Setup-*.exe
+          - os: macos-latest
+            script: dist:mac
+            artifact: Nexus-*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run --filter @nexus/desktop ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-desktop-${{ matrix.os }}
+          path: apps/desktop/release/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with: { files: artifacts/* }

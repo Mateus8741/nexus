@@ -9,7 +9,7 @@ import path from "node:path";
  * boot SYSTEM, criado por install.ps1 -Mode Service) →
  * `%LOCALAPPDATA%\NexusAgent` (modo UserStartup / legado).
  *
- * Em Linux/macOS (dev) cai num caminho sob homedir que normalmente não
+ * macOS usa `~/Library/Application Support/NexusAgent`. Em Linux (dev) cai num caminho sob homedir que normalmente não
  * existe — leitura de config falha em silêncio e o Agent segue para env/UDP.
  */
 export function getInstallDir(): string {
@@ -24,6 +24,10 @@ export function getInstallDir(): string {
 
     const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
     return path.join(localAppData, "NexusAgent");
+  }
+
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", "NexusAgent");
   }
 
   return path.join(os.homedir(), ".local", "share", "NexusAgent");

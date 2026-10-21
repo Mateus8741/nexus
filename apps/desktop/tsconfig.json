@@ -1,0 +1,12 @@
+{
+  "extends": "@nexus/typescript-config/library.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "noEmit": true,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src", "scripts/build.ts"]
+}
