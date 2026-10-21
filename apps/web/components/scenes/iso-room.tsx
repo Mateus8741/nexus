@@ -812,7 +812,7 @@ function Scene({ lightsOn, lightsTotal, computersOnline, acOn, tint, ambient = 1
 
         {/* sombra no vazio */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[W / 2, -0.6, D / 2]}>
-          <planeGeometry args={[W * 2, D * 2]} />
+          <planeGeometry args={[W * 1.35, D * 1.35]} />
           <meshBasicMaterial
             map={getGlowTexture()}
             color="#000000"
