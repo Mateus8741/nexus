@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 /** Rotas sem sessão: entrada, cadastro de pessoas externas e a LP interna. */
-const PUBLIC_PATHS = ["/login", "/setup", "/cadastro", "/conta-criada", "/welcome"];
+const PUBLIC_PATHS = ["/login", "/setup", "/cadastro", "/conta-criada"];
 
 /** Aberta a visitantes (sem sessão renderiza sem o shell do painel). */
 const SEMI_PUBLIC_PATHS = ["/downloads"];
@@ -26,6 +26,13 @@ export async function middleware(request: NextRequest) {
 
   if (request.cookies.get("nexus-demo")?.value === "1" && !pathname.startsWith("/_next")) {
     return NextResponse.next();
+  }
+
+  // "/" é a landing pública (logados também a veem; o painel fica em /dashboard).
+  if (pathname === "/") {
+    const landingHeaders = new Headers(request.headers);
+    landingHeaders.set("x-nexus-bare", "1");
+    return NextResponse.next({ request: { headers: landingHeaders } });
   }
 
   // Instaladores estáticos: nunca passam pela checagem de sessão.
@@ -64,12 +71,7 @@ export async function middleware(request: NextRequest) {
       cache: "no-store",
     });
     if (meRes.status === 401) {
-      // Visitante em "/": mostra a LP (mesma URL). Em /downloads: página aberta, sem shell.
-      if (pathname === "/") {
-        return NextResponse.rewrite(new URL("/welcome", request.url), {
-          request: { headers: bareHeaders },
-        });
-      }
+      // Em /downloads: página aberta, sem shell.
       if (semiPublic) return NextResponse.next({ request: { headers: bareHeaders } });
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("next", pathname);

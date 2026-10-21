@@ -13,7 +13,7 @@ const LINKS = [
   { href: "#downloads", label: "Downloads" },
 ] as const;
 
-export function LandingNav() {
+export function LandingNav({ signedIn = false }: { signedIn?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -68,18 +68,29 @@ export function LandingNav() {
           >
             Baixar app
           </Link>
-          <Link
-            href="/login"
-            className="rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-white/5"
-          >
-            Entrar
-          </Link>
-          <Link
-            href="/cadastro"
-            className="rounded-xl bg-gradient-to-br from-glow to-glow-2 px-4 py-2 text-sm font-semibold text-background shadow-md shadow-glow/30 transition hover:brightness-110"
-          >
-            Criar conta
-          </Link>
+          {signedIn ? (
+            <Link
+              href="/dashboard"
+              className="rounded-xl bg-gradient-to-br from-glow to-glow-2 px-4 py-2 text-sm font-semibold text-background shadow-md shadow-glow/30 transition hover:brightness-110"
+            >
+              Abrir painel
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-white/5"
+              >
+                Entrar
+              </Link>
+              <Link
+                href="/cadastro"
+                className="rounded-xl bg-gradient-to-br from-glow to-glow-2 px-4 py-2 text-sm font-semibold text-background shadow-md shadow-glow/30 transition hover:brightness-110"
+              >
+                Criar conta
+              </Link>
+            </>
+          )}
         </div>
 
         <button
@@ -116,18 +127,29 @@ export function LandingNav() {
               ))}
             </ul>
             <div className="mt-2 grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
-              <Link
-                href="/login"
-                className="rounded-xl border border-white/10 px-4 py-2.5 text-center text-sm font-medium"
-              >
-                Entrar
-              </Link>
-              <Link
-                href="/cadastro"
-                className="rounded-xl bg-gradient-to-br from-glow to-glow-2 px-4 py-2.5 text-center text-sm font-semibold text-background"
-              >
-                Criar conta
-              </Link>
+              {signedIn ? (
+                <Link
+                  href="/dashboard"
+                  className="col-span-2 rounded-xl bg-gradient-to-br from-glow to-glow-2 px-4 py-2.5 text-center text-sm font-semibold text-background"
+                >
+                  Abrir painel
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="rounded-xl border border-white/10 px-4 py-2.5 text-center text-sm font-medium"
+                  >
+                    Entrar
+                  </Link>
+                  <Link
+                    href="/cadastro"
+                    className="rounded-xl bg-gradient-to-br from-glow to-glow-2 px-4 py-2.5 text-center text-sm font-semibold text-background"
+                  >
+                    Criar conta
+                  </Link>
+                </>
+              )}
               <Link
                 href="/downloads"
                 className="col-span-2 rounded-xl px-4 py-2 text-center text-sm text-muted-foreground"

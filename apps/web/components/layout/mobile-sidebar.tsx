@@ -41,7 +41,7 @@ export function MobileSidebar({ open, onOpenChange }: MobileSidebarProps) {
             transition={{ type: "spring", stiffness: 340, damping: 34 }}
           >
             <div className="flex h-16 shrink-0 items-center justify-between px-4">
-              <Brand />
+              <Brand href="/dashboard" />
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}

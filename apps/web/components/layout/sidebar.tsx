@@ -25,7 +25,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
       className="glass sticky top-0 hidden h-svh shrink-0 flex-col rounded-none border-y-0 border-l-0 md:flex"
     >
       <div className="flex h-16 shrink-0 items-center px-4">
-        <Brand compact={collapsed} />
+        <Brand compact={collapsed} href="/dashboard" />
       </div>
 
       <nav

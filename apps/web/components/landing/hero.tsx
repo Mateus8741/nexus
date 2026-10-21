@@ -79,7 +79,7 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] as const } },
 };
 
-export function Hero() {
+export function Hero({ signedIn = false }: { signedIn?: boolean }) {
   const reduced = useReducedMotion() ?? false;
   const ref = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(true);
@@ -224,11 +224,11 @@ export function Hero() {
 
           <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center gap-3">
             <Link
-              href="/cadastro"
+              href={signedIn ? "/dashboard" : "/cadastro"}
               className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-br from-glow to-glow-2 px-6 py-3 text-sm font-semibold text-background shadow-lg shadow-glow/30 transition hover:shadow-glow/50"
             >
               <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-              <span className="relative">Criar conta grátis</span>
+              <span className="relative">{signedIn ? "Abrir painel" : "Criar conta grátis"}</span>
               <ArrowRight className="relative size-4 transition-transform group-hover:translate-x-1" />
             </Link>
             <Link

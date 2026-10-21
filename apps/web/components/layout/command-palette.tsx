@@ -72,7 +72,7 @@ export function CommandPalette() {
       group: "Cenas",
       icon: Sparkles,
       run: () => {
-        router.push("/");
+        router.push("/dashboard");
         setTimeout(() => requestScene(scene.id), 450);
       },
     }));

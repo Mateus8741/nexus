@@ -32,7 +32,7 @@ export const navSections: NavSection[] = [
   {
     title: "Geral",
     items: [
-      { label: "Dashboard", href: "/", icon: LayoutDashboard, implemented: true },
+      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, implemented: true },
       { label: "Ambientes", href: "/spaces", icon: Layers, implemented: true },
       { label: "Downloads", href: "/downloads", icon: Download, implemented: true },
       { label: "Dispositivos", href: "#", icon: Cpu, implemented: false },

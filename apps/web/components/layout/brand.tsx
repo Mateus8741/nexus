@@ -4,9 +4,9 @@ import { motion } from "motion/react";
 import Link from "next/link";
 
 /** Logo animado: o "N" respira com um halo pulsante. */
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({ compact = false, href = "/" }: { compact?: boolean; href?: string }) {
   return (
-    <Link href="/" className="group flex items-center gap-2.5 font-semibold tracking-tight">
+    <Link href={href} className="group flex items-center gap-2.5 font-semibold tracking-tight">
       <span className="relative flex size-8 shrink-0 items-center justify-center">
         <span className="absolute inset-0 rounded-xl bg-glow/40 blur-md transition-opacity group-hover:opacity-100" />
         <motion.span

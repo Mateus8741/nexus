@@ -38,7 +38,7 @@ export function LoginForm() {
     } catch {
       // Core inacessível: segue o fluxo normal.
     }
-    router.push(searchParams.get("next") ?? "/");
+    router.push(searchParams.get("next") ?? "/dashboard");
     router.refresh();
   }
 
