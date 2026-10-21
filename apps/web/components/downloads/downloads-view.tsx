@@ -5,13 +5,16 @@ import {
   ArrowRight,
   Download,
   LayoutGrid,
+  LogIn,
   MonitorSmartphone,
   ShieldCheck,
+  UserPlus,
   Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 
+import { Brand } from "@/components/layout/brand";
 import { RevealGroup, RevealItem } from "@/components/motion/reveal";
 import { Spotlight } from "@/components/motion/spotlight";
 import { PageHeader } from "@/components/ui/form";
@@ -99,11 +102,82 @@ function detectPlatform(): Platform | null {
   return null;
 }
 
-export function DownloadsView() {
+function GuestBar() {
+  return (
+    <header className="flex items-center justify-between gap-3 pb-2">
+      <Brand />
+      <div className="flex items-center gap-2">
+        <Link
+          href="/login"
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-medium transition-colors hover:bg-white/10"
+        >
+          <LogIn className="size-4" />
+          Entrar
+        </Link>
+        <Link
+          href="/cadastro"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-glow to-glow-2 px-4 text-sm font-medium text-background shadow-[0_8px_24px_-8px_var(--glow)] transition-[filter] hover:brightness-110"
+        >
+          <UserPlus className="size-4" />
+          Criar conta
+        </Link>
+      </div>
+    </header>
+  );
+}
+
+function GuestNotice() {
+  return (
+    <RevealItem>
+      <div className="glass glow-ring flex flex-col gap-4 rounded-3xl p-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-start gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-glow to-glow-2 text-background">
+            <ShieldCheck className="size-6" />
+          </span>
+          <div>
+            <h2 className="text-gradient text-xl font-semibold tracking-tight">
+              Você precisa de uma conta para usar o Nexus
+            </h2>
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+              Você pode baixar o instalador agora, mas o app só funciona com uma conta. Crie a sua
+              em instantes ou entre se já tiver uma.
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/cadastro"
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-glow to-glow-2 px-4 text-sm font-medium text-background shadow-[0_8px_24px_-8px_var(--glow)] transition-[filter] hover:brightness-110"
+          >
+            Criar conta
+          </Link>
+          <Link
+            href="/login"
+            className="inline-flex h-10 items-center rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-medium transition-colors hover:bg-white/10"
+          >
+            Entrar
+          </Link>
+        </div>
+      </div>
+    </RevealItem>
+  );
+}
+
+export function DownloadsView({ guest = false }: { guest?: boolean }) {
   const detected = useClientValue(detectPlatform, null);
 
   return (
-    <RevealGroup className="flex flex-col gap-10">
+    <RevealGroup
+      className={
+        guest ? "mx-auto flex max-w-6xl flex-col gap-10 p-5 md:p-8" : "flex flex-col gap-10"
+      }
+    >
+      {guest && (
+        <RevealItem>
+          <GuestBar />
+        </RevealItem>
+      )}
+      {guest && <GuestNotice />}
       <RevealItem>
         <PageHeader
           title="Nexus Desktop"

@@ -2,6 +2,7 @@
 
 import { LogIn } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
@@ -25,6 +26,17 @@ export function LoginForm() {
     if (result.error) {
       setError(result.error.message ?? "Falha no login");
       return;
+    }
+    try {
+      const base = process.env.NEXT_PUBLIC_NEXUS_CORE_URL ?? "http://localhost:4700";
+      const me = await fetch(`${base}/me`, { credentials: "include" });
+      if (me.status === 401) {
+        router.push("/conta-criada");
+        router.refresh();
+        return;
+      }
+    } catch {
+      // Core inacessível: segue o fluxo normal.
     }
     router.push(searchParams.get("next") ?? "/");
     router.refresh();
@@ -67,6 +79,12 @@ export function LoginForm() {
         <LogIn className="size-4" />
         {loading ? "Entrando…" : "Entrar"}
       </ActionButton>
+      <p className="text-center text-sm text-muted-foreground">
+        Não tem conta?{" "}
+        <Link href="/cadastro" className="text-glow hover:underline">
+          Criar conta
+        </Link>
+      </p>
     </form>
   );
 }

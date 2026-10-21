@@ -9,15 +9,15 @@ import { MobileSidebar } from "./mobile-sidebar";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
-const AUTH_PATHS = ["/login", "/setup"];
+const AUTH_PATHS = ["/login", "/setup", "/cadastro", "/conta-criada", "/welcome"];
 
-/** Composição do shell. Páginas de auth renderizam sem chrome (o fundo vem do layout raiz). */
-export function AppShell({ children }: { children: ReactNode }) {
+/** Composição do shell. Páginas de auth, a LP e páginas abertas a visitantes (`bare`) renderizam sem chrome. */
+export function AppShell({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  if (AUTH_PATHS.some((path) => pathname.startsWith(path))) {
+  if (bare || AUTH_PATHS.some((path) => pathname.startsWith(path))) {
     return <>{children}</>;
   }
 

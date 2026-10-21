@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -22,11 +23,13 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.ico" },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const bare = (await headers()).get("x-nexus-bare") === "1";
+
   return (
     <html
       lang="pt-BR"
@@ -35,7 +38,7 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col">
         <Aurora />
         <Providers>
-          <AppShell>{children}</AppShell>
+          <AppShell bare={bare}>{children}</AppShell>
         </Providers>
       </body>
     </html>
