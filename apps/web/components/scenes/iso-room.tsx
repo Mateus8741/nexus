@@ -687,9 +687,18 @@ function AcWind({ on }: { on: boolean }) {
 /** Centraliza a câmera, inclina com o mouse e faz a cena flutuar. */
 function Rig({ children }: { children: ReactNode }) {
   const group = useRef<THREE.Group>(null);
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const target = useMemo(() => new THREE.Vector3(W / 2 - 0.1, 0.9, D / 2 - 0.1), []);
   useFrame(({ pointer, clock }, dt) => {
+    // enquadra a sala inteira mesmo em canvas mais largos/baixos que 552:430
+    const perspective = camera as THREE.PerspectiveCamera;
+    const aspect = size.width / Math.max(size.height, 1);
+    const half = Math.tan(THREE.MathUtils.degToRad(FIT_FOV / 2)) * 1.05;
+    const fov = THREE.MathUtils.radToDeg(2 * Math.atan(half * Math.max(1, FIT_ASPECT / aspect)));
+    if (Math.abs(perspective.fov - fov) > 0.01) {
+      perspective.fov = fov;
+      perspective.updateProjectionMatrix();
+    }
     camera.lookAt(target);
     const g = group.current;
     if (!g) return;
@@ -703,6 +712,10 @@ function Rig({ children }: { children: ReactNode }) {
     </group>
   );
 }
+
+/** Enquadramento base: fov vertical e proporção em que a sala cabe inteira. */
+const FIT_FOV = 24;
+const FIT_ASPECT = 552 / 430;
 
 const PENDANTS = [
   { key: "living", x: 2.8, z: 2.9, shadow: true },
