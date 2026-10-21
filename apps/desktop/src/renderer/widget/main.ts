@@ -348,39 +348,44 @@ function renderList(devices: DeviceView[]): void {
   }
 
   const nextVisible = new Set(scoped.map((d) => d.id));
-  let enterIndex = 0;
-  const sections: HTMLElement[] = [];
-
-  for (const key of order) {
-    const section = html("section", "group");
-    section.append(html("h3", "group-title", key));
-    const grid = html("div", "grid");
-    for (const device of groups.get(key) ?? []) {
-      let card = cards.get(device.id);
-      if (!card) {
-        card = createCard(device);
-        cards.set(device.id, card);
-      }
-      updateCard(card, device);
-      if (!visibleIds.has(device.id)) {
-        card.classList.remove("enter");
-        void card.offsetWidth;
-        card.style.setProperty("--e", String(enterIndex++));
-        card.classList.add("enter");
-      }
-      grid.append(card);
+  for (const device of scoped) {
+    let card = cards.get(device.id);
+    if (!card) {
+      card = createCard(device);
+      cards.set(device.id, card);
     }
-    section.append(grid);
-    sections.push(section);
+    updateCard(card, device);
   }
-  visibleIds = nextVisible;
+
   // Só remonta o DOM quando a estrutura muda: trocar os cards de lugar a cada
   // polling cancela cliques em andamento (mousedown/up em elemento reparentado).
+  // Os cards só podem ser movidos para as novas seções quando elas vão ser
+  // montadas — senão ficam órfãos em grids descartados e a lista "some".
   const layout = order.map((key) => `${key}:${(groups.get(key) ?? []).map((d) => d.id).join(",")}`).join("|");
   if (layout !== lastLayout || list.querySelector(".group") === null) {
     lastLayout = layout;
+    let enterIndex = 0;
+    const sections: HTMLElement[] = [];
+    for (const key of order) {
+      const section = html("section", "group");
+      section.append(html("h3", "group-title", key));
+      const grid = html("div", "grid");
+      for (const device of groups.get(key) ?? []) {
+        const card = cards.get(device.id) as HTMLElement;
+        if (!visibleIds.has(device.id)) {
+          card.classList.remove("enter");
+          void card.offsetWidth;
+          card.style.setProperty("--e", String(enterIndex++));
+          card.classList.add("enter");
+        }
+        grid.append(card);
+      }
+      section.append(grid);
+      sections.push(section);
+    }
     list.replaceChildren(...sections);
   }
+  visibleIds = nextVisible;
 }
 
 function renderEmpty(list: HTMLElement, title: string, text: string, action?: string, onAction?: () => void): void {
