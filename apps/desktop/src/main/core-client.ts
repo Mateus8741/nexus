@@ -6,6 +6,8 @@ import type {
   ActionRequest,
   ConnectionState,
   DeviceView,
+  FieldSchema,
+  ResolvedAction,
   Snapshot,
   SpaceView,
   TestConnectionResult,
@@ -29,6 +31,11 @@ export function toWsUrl(raw: string): string {
   return http ? http.replace(/^http/i, "ws") : "";
 }
 
+interface CapabilityDto {
+  key: string;
+  actions?: { type: string; label?: string; payloadSchema?: Record<string, FieldSchema>; advanced?: boolean }[];
+}
+
 interface DeviceDto {
   id: string;
   name: string;
@@ -39,8 +46,14 @@ interface DeviceDto {
   state?: { status?: DeviceView["status"]; attributes?: DeviceView["attributes"] };
 }
 
-function toView(dto: DeviceDto): DeviceView {
+function toView(dto: DeviceDto, registry: ReadonlyMap<string, CapabilityDto>): DeviceView {
   const capabilities = dto.capabilities ?? [];
+  const resolved: ResolvedAction[] = capabilities.flatMap((c) =>
+    (c.actions ?? []).map((type) => {
+      const schema = registry.get(c.key)?.actions?.find((a) => a.type === type);
+      return { capabilityKey: c.key, actionType: type, label: schema?.label ?? type, payloadSchema: schema?.payloadSchema, advanced: schema?.advanced };
+    }),
+  );
   return {
     id: dto.id,
     name: dto.name,
@@ -51,6 +64,7 @@ function toView(dto: DeviceDto): DeviceView {
     attributes: dto.state?.attributes ?? {},
     actions: [...new Set(capabilities.flatMap((c) => c.actions ?? []))],
     capabilityKeys: capabilities.map((c) => c.key),
+    resolved,
   };
 }
 
@@ -106,10 +120,12 @@ export class CoreClient extends EventEmitter {
   private updatedAt = 0;
   private demoDevices = createDemoDevices();
   private inflight = false;
+  private capabilities = new Map<string, CapabilityDto>();
 
   configure(settings: BackendSettings): void {
     this.settings = settings;
     this.devices = [];
+    this.capabilities = new Map();
     this.spaces = [];
     this.error = undefined;
     this.connection = "connecting";
@@ -156,11 +172,12 @@ export class CoreClient extends EventEmitter {
     if (mode !== "live" || !apiKey || this.inflight) return;
     this.inflight = true;
     try {
-      const [devices, spaces] = await Promise.all([
+      const [devices, , spaces] = await Promise.all([
         request<DeviceDto[]>(baseUrl, apiKey, "/devices"),
+        this.loadCapabilities(baseUrl, apiKey),
         request<{ id: string; name: string }[]>(baseUrl, apiKey, "/spaces").catch(() => this.spaces),
       ]);
-      this.devices = devices.map(toView);
+      this.devices = devices.map((dto) => toView(dto, this.capabilities));
       this.spaces = spaces.map((s) => ({ id: s.id, name: s.name }));
       this.connection = "ok";
       this.error = undefined;
@@ -172,6 +189,17 @@ export class CoreClient extends EventEmitter {
       this.inflight = false;
       this.updatedAt = Date.now();
       this.emitSnapshot();
+    }
+  }
+
+  /** O registro quase nunca muda: busca uma vez (e de novo enquanto estiver vazio). Falha não derruba o polling. */
+  private async loadCapabilities(baseUrl: string, apiKey: string): Promise<void> {
+    if (this.capabilities.size > 0) return;
+    try {
+      const list = await request<CapabilityDto[]>(baseUrl, apiKey, "/capabilities");
+      this.capabilities = new Map(list.map((c) => [c.key, c]));
+    } catch {
+      /* segue só com os nomes das ações */
     }
   }
 
@@ -193,13 +221,13 @@ export class CoreClient extends EventEmitter {
     }
     if (!apiKey) return { deviceId: action.deviceId, success: false, error: "Sem API key." };
     try {
-      const result = await request<{ success: boolean; error?: string }>(
+      const result = await request<{ success: boolean; error?: string; output?: string }>(
         baseUrl,
         apiKey,
         `/devices/${encodeURIComponent(action.deviceId)}/actions`,
         { method: "POST", body: JSON.stringify({ action: { type: action.type, payload: action.payload } }) },
       );
-      return { deviceId: action.deviceId, success: result.success, error: result.error };
+      return { deviceId: action.deviceId, success: result.success, error: result.error, output: result.output };
     } catch (error) {
       return { deviceId: action.deviceId, success: false, error: error instanceof Error ? error.message : String(error) };
     }

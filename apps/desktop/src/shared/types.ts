@@ -3,6 +3,23 @@
 export type AttributeValue = string | number | boolean | null;
 
 /** Dispositivo no formato enxuto que a UI consome (derivado de GET /devices). */
+export type FieldSchema =
+  | "string"
+  | "number"
+  | "boolean"
+  | { readonly type: "string"; readonly options?: readonly string[] }
+  | { readonly type: "number"; readonly min?: number; readonly max?: number; readonly step?: number; readonly unit?: string }
+  | { readonly type: "boolean" };
+
+/** Ação já resolvida contra o registro de capabilities do Core (label + schema do payload). */
+export interface ResolvedAction {
+  readonly capabilityKey: string;
+  readonly actionType: string;
+  readonly label: string;
+  readonly payloadSchema?: Readonly<Record<string, FieldSchema>>;
+  readonly advanced?: boolean;
+}
+
 export interface DeviceView {
   readonly id: string;
   readonly name: string;
@@ -14,6 +31,8 @@ export interface DeviceView {
   /** Ações de todas as capabilities, achatadas (ex.: turn_on, lock, set-target-temperature). */
   readonly actions: readonly string[];
   readonly capabilityKeys: readonly string[];
+  /** Ações com label/schema (vindas de GET /capabilities); ausente em modo demo. */
+  readonly resolved?: readonly ResolvedAction[];
 }
 
 export interface SpaceView {
@@ -65,6 +84,7 @@ export interface ActionOutcome {
   readonly deviceId: string;
   readonly success: boolean;
   readonly error?: string;
+  readonly output?: string;
 }
 
 export interface TestConnectionResult {

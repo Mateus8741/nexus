@@ -5,10 +5,22 @@ import type {
   DeviceProviderRegistry,
   DeviceRegistry,
   EventBus,
+  PermissionKey,
   PermissionService,
   SystemEvent,
 } from "@nexus/domain";
-import { PermissionDeniedError } from "@nexus/domain";
+import { PERMISSION_KEYS, PermissionDeniedError } from "@nexus/domain";
+
+/**
+ * Só ações com permissão própria declarada (shutdown, restart, lock,
+ * executeCommand…) são gateadas individualmente. As demais (liga/desliga,
+ * brilho, cor, data point — plugins como o Tuya) caem sob `device.write`;
+ * exigir `action.<tipo>` para elas negava tudo a quem não é Owner, já que
+ * essas chaves nunca foram semeadas nos papéis.
+ */
+const GATED_ACTIONS: ReadonlySet<string> = new Set(
+  PERMISSION_KEYS.filter((key) => key.startsWith("action.")),
+);
 
 export interface ExecuteDeviceActionInput {
   readonly deviceId: string;
@@ -34,10 +46,13 @@ export class ExecuteDeviceActionUseCase {
         workspaceId: input.actor.workspaceId,
         deviceId: input.deviceId,
       });
-      await this.permissionService.require(input.actor, `action.${input.action.type}`, {
-        workspaceId: input.actor.workspaceId,
-        deviceId: input.deviceId,
-      });
+      const actionPermission: PermissionKey = `action.${input.action.type}`;
+      if (GATED_ACTIONS.has(actionPermission)) {
+        await this.permissionService.require(input.actor, actionPermission, {
+          workspaceId: input.actor.workspaceId,
+          deviceId: input.deviceId,
+        });
+      }
     } catch (error) {
       if (error instanceof PermissionDeniedError) {
         return { success: false, error: error.message };

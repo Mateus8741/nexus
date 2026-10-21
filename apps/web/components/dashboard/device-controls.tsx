@@ -5,10 +5,10 @@ import { fieldPrimitiveType } from "@nexus/domain";
 import { Button } from "@nexus/ui/components/button";
 import { Slider } from "@nexus/ui/components/slider";
 import { Switch } from "@nexus/ui/components/switch";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, SlidersHorizontal, Terminal } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 
-import { DeviceActionForm } from "@/components/dashboard/device-action-form";
+import { DeviceActionForm, isHsvAction } from "@/components/dashboard/device-action-form";
 import { DeviceCommandTerminal } from "@/components/dashboard/device-command-terminal";
 import { runDeviceAction } from "@/lib/actions/device-actions";
 import { guessPowerState } from "@/lib/devices/view";
@@ -45,6 +45,7 @@ interface Classified {
   readonly quick: readonly QuickControl[];
   readonly advanced: readonly ResolvedDeviceAction[];
   readonly commandAction?: ResolvedDeviceAction;
+  readonly color?: ResolvedDeviceAction;
 }
 
 /**
@@ -63,6 +64,7 @@ function classify(actions: readonly ResolvedDeviceAction[]): Classified {
   const quick: QuickControl[] = [];
   const advanced: ResolvedDeviceAction[] = [];
   let commandAction: ResolvedDeviceAction | undefined;
+  let color: ResolvedDeviceAction | undefined;
   let hasPower = false;
 
   for (const action of actions) {
@@ -83,6 +85,10 @@ function classify(actions: readonly ResolvedDeviceAction[]): Classified {
     if (action.actionType === "toggle") {
       power.toggle = action;
       hasPower = true;
+      continue;
+    }
+    if (isHsvAction(action)) {
+      color = action;
       continue;
     }
     if (action.advanced) {
@@ -151,7 +157,7 @@ function classify(actions: readonly ResolvedDeviceAction[]): Classified {
     advanced.push(action);
   }
 
-  return { power: hasPower ? power : undefined, quick, advanced, commandAction };
+  return { power: hasPower ? power : undefined, quick, advanced, commandAction, color };
 }
 
 function prettifyAttributeKey(key: string): string {
@@ -269,79 +275,103 @@ export function DeviceControls({
 
       {feedback ? <span className="text-xs text-red-500">{feedback}</span> : null}
 
+      {classified.color ? (
+        <div className="flex flex-col gap-1 rounded-xl border border-white/10 bg-white/[0.03] pt-2.5">
+          <span className="px-3 text-xs text-muted-foreground">Cor</span>
+          <DeviceActionForm deviceId={deviceId} action={classified.color} />
+        </div>
+      ) : null}
+
       {hasAdvancedContent || attributeEntries.length > 0 ? (
-        <div className="border-t border-border pt-2">
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
           <button
             type="button"
-            className="flex w-full items-center justify-between text-xs text-muted-foreground hover:text-foreground"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => setDetailsOpen((open) => !open)}
             aria-expanded={detailsOpen}
           >
-            <span>Avançado</span>
+            <SlidersHorizontal className="size-3.5" />
+            <span className="flex-1 text-left">Avançado</span>
             <ChevronDown
               className={`size-3.5 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
             />
           </button>
 
           {detailsOpen ? (
-            <div className="mt-2 flex flex-col gap-3">
-              {classified.advanced.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
-                  {classified.advanced.map((action) => (
-                    <div key={`${action.capabilityKey}-${action.actionType}`}>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="xs"
-                        aria-expanded={openFormActionType === action.actionType}
-                        onClick={() =>
-                          setOpenFormActionType((current) =>
-                            current === action.actionType ? null : action.actionType,
-                          )
-                        }
-                      >
-                        {action.label}
-                      </Button>
-                      {openFormActionType === action.actionType ? (
-                        <DeviceActionForm
-                          deviceId={deviceId}
-                          action={action}
-                          onClose={() => setOpenFormActionType(null)}
-                        />
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+            <div className="flex flex-col gap-2 border-t border-white/10 p-2">
+              {classified.advanced.map((action) => {
+                const open = openFormActionType === action.actionType;
+                return (
+                  <div
+                    key={`${action.capabilityKey}-${action.actionType}`}
+                    className="overflow-hidden rounded-lg bg-white/[0.04]"
+                  >
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      onClick={() => setOpenFormActionType(open ? null : action.actionType)}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-white/[0.05]"
+                    >
+                      {action.label}
+                      <ChevronRight
+                        className={`size-3.5 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
+                      />
+                    </button>
+                    {open ? (
+                      <DeviceActionForm
+                        deviceId={deviceId}
+                        action={action}
+                        onDone={() => setOpenFormActionType(null)}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
 
               {classified.commandAction ? (
-                <div>
-                  <Button
+                <div className="overflow-hidden rounded-lg bg-white/[0.04]">
+                  <button
                     type="button"
-                    variant="outline"
-                    size="xs"
                     aria-expanded={terminalOpen}
                     onClick={() => setTerminalOpen((open) => !open)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-white/[0.05]"
                   >
-                    {terminalOpen ? "Fechar terminal" : classified.commandAction.label}
-                  </Button>
-                  {terminalOpen ? (
-                    <DeviceCommandTerminal
-                      deviceId={deviceId}
-                      onClose={() => setTerminalOpen(false)}
+                    <span className="flex items-center gap-2">
+                      <Terminal className="size-3.5 text-muted-foreground" />
+                      {classified.commandAction.label}
+                    </span>
+                    <ChevronRight
+                      className={`size-3.5 text-muted-foreground transition-transform ${terminalOpen ? "rotate-90" : ""}`}
                     />
+                  </button>
+                  {terminalOpen ? (
+                    <div className="p-2 pt-0">
+                      <DeviceCommandTerminal
+                        deviceId={deviceId}
+                        onClose={() => setTerminalOpen(false)}
+                      />
+                    </div>
                   ) : null}
                 </div>
               ) : null}
 
               {attributeEntries.length > 0 ? (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[0.7rem] text-muted-foreground">
-                  {attributeEntries.map(([key, value]) => (
-                    <div key={key} className="flex justify-between gap-2">
-                      <span className="truncate">{prettifyAttributeKey(key)}</span>
-                      <span className="truncate text-foreground/80">{String(value)}</span>
-                    </div>
-                  ))}
+                <div className="pt-1">
+                  <span className="px-1 text-[0.6rem] font-semibold tracking-[0.14em] text-muted-foreground/70 uppercase">
+                    Propriedades
+                  </span>
+                  <dl className="mt-1.5 grid grid-cols-2 gap-1.5">
+                    {attributeEntries.map(([key, value]) => (
+                      <div key={key} className="min-w-0 rounded-lg bg-white/[0.04] px-2.5 py-1.5">
+                        <dt className="truncate text-[0.65rem] text-muted-foreground">
+                          {prettifyAttributeKey(key)}
+                        </dt>
+                        <dd className="mt-0.5 font-mono text-[0.72rem] break-all text-foreground/90">
+                          {String(value)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
               ) : null}
             </div>
@@ -349,7 +379,7 @@ export function DeviceControls({
         </div>
       ) : null}
 
-      {classified.quick.length === 0 && !classified.power && !hasAdvancedContent ? (
+      {classified.quick.length === 0 && !classified.power && !classified.color && !hasAdvancedContent ? (
         <span className="text-xs text-muted-foreground">Sem ações disponíveis.</span>
       ) : null}
     </div>

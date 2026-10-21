@@ -10,8 +10,9 @@ import {
   type SceneId,
   targetTemperature,
 } from "../../shared/devices";
-import type { ActionRequest, AgentStatus, DeviceView, NexusBridge, Snapshot } from "../../shared/types";
+import type { ActionOutcome, ActionRequest, AgentStatus, DeviceView, NexusBridge, Snapshot } from "../../shared/types";
 import { icon } from "../shared/icons";
+import { buildPanel, type Panel } from "./controls";
 import { buildRoom, type RoomId, updateRoom } from "./room";
 
 declare global {
@@ -33,6 +34,8 @@ let activeScene: SceneId | undefined = readScene();
 const overrides = new Map<string, { device: DeviceView; until: number }>();
 const tempTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const cards = new Map<string, HTMLElement>();
+const panels = new Map<string, Panel>();
+const openCards = new Set<string>();
 let visibleIds = new Set<string>();
 
 function readScene(): SceneId | undefined {
@@ -278,6 +281,25 @@ function createCard(device: DeviceView): HTMLElement {
     card.append(html("span", "power lock", icon("lock", 17)));
   }
 
+  const more = html("button", "more", icon("chevron", 16));
+  more.setAttribute("aria-label", "Mais controles");
+  more.setAttribute("aria-expanded", "false");
+  more.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = !openCards.has(device.id);
+    if (open) openCards.add(device.id);
+    else openCards.delete(device.id);
+    card.classList.toggle("open", open);
+    more.setAttribute("aria-expanded", String(open));
+    if (open && !panels.has(device.id)) {
+      const current = effectiveDevices().find((d) => d.id === device.id) ?? device;
+      const panel = buildPanel(current, { run: runOne });
+      panels.set(device.id, panel);
+      card.append(panel.el);
+    }
+  });
+  card.append(more);
+
   const activate = (): void => {
     const current = effectiveDevices().find((d) => d.id === device.id);
     if (!current) return;
@@ -286,6 +308,7 @@ function createCard(device: DeviceView): HTMLElement {
   };
   card.addEventListener("click", activate);
   card.addEventListener("keydown", (e) => {
+    if (e.target !== card) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       activate();
@@ -304,6 +327,7 @@ function updateCard(card: HTMLElement, device: DeviceView): void {
   const on = isOn(device);
   card.classList.toggle("on", on && category !== "computer");
   card.classList.toggle("offline", device.status === "offline");
+  panels.get(device.id)?.update(device);
   const name = card.querySelector(".name") as HTMLElement;
   if (name.textContent !== device.name) name.textContent = device.name;
 
@@ -437,6 +461,13 @@ function applyLocal(request: ActionRequest): void {
   const base = effectiveDevices().find((d) => d.id === request.deviceId);
   if (!base) return;
   overrides.set(base.id, { device: applyOptimistic(base, request.type, request.payload), until: Date.now() + 3500 });
+}
+
+async function runOne(request: ActionRequest): Promise<ActionOutcome> {
+  const [outcome] = await api.runActions([request]);
+  const result = outcome ?? { deviceId: request.deviceId, success: false, error: "Sem resposta." };
+  if (!result.success) toast(result.error ?? "Falha ao executar a ação.", true);
+  return result;
 }
 
 async function send(requests: ActionRequest[], message?: string): Promise<void> {

@@ -206,11 +206,12 @@ export class TuyaDeviceProvider implements DeviceProvider {
       const s = clampPercent(action.payload?.s, "s");
       const v = clampPercent(action.payload?.v, "v");
       const max = nativeMax(code);
-      const colorValue = JSON.stringify({
+      // A Standard Instruction Set espera o HSV como objeto (não string JSON).
+      const colorValue = {
         h: Math.round(h),
         s: Math.round((s / 100) * max),
         v: Math.round((v / 100) * max),
-      });
+      };
       const commands = [{ code, value: colorValue }];
       const workMode = findDatapointCode(device, [WORK_MODE_CODE]);
       if (workMode) commands.push({ code: workMode, value: "colour" });

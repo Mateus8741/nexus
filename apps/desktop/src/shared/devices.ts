@@ -1,4 +1,4 @@
-import type { ActionRequest, DeviceView } from "./types";
+import type { ActionRequest, DeviceView, ResolvedAction } from "./types";
 
 export type DeviceCategory = "light" | "switch" | "climate" | "computer" | "sensor" | "other";
 
@@ -123,4 +123,10 @@ export function planScene(scene: SceneId, devices: readonly DeviceView[]): Actio
     }
   }
   return requests;
+}
+
+/** Ações do dispositivo com label/schema; sem registro (demo), cai nos nomes cruas das ações. */
+export function resolveActions(device: DeviceView): readonly ResolvedAction[] {
+  if (device.resolved && device.resolved.length > 0) return device.resolved;
+  return device.actions.map((type) => ({ capabilityKey: "", actionType: type, label: type }));
 }
