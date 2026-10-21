@@ -3,68 +3,16 @@
 import { ArrowRight, ChevronDown, Download, Monitor, Plug } from "lucide-react";
 import {
   motion,
-  useMotionTemplate,
   useMotionValue,
   useReducedMotion,
   useScroll,
   useSpring,
   useTransform,
 } from "motion/react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Component, type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-const HeroScene = dynamic(() => import("./hero-scene"), { ssr: false });
-
-/** Falha de render do canvas não derruba a página. */
-class SceneBoundary extends Component<
-  { children: ReactNode; fallback: ReactNode },
-  { failed: boolean }
-> {
-  override state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  override render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
-}
-
-/** Sem WebGL, em aparelhos fracos/economia de dados ou telas pequenas: usa o fallback estático. */
-function hasWebGL(): boolean {
-  const nav = navigator as Navigator & {
-    deviceMemory?: number;
-    connection?: { saveData?: boolean };
-  };
-  if (
-    window.innerWidth < 768 ||
-    (nav.hardwareConcurrency ?? 8) <= 4 ||
-    (nav.deviceMemory ?? 8) <= 4 ||
-    nav.connection?.saveData
-  ) {
-    return false;
-  }
-  try {
-    const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") ?? c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
-/** Fallback estático: orbe e halos em CSS quando não há WebGL. */
-function StaticFallback() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-      <div className="relative size-[min(70vw,28rem)]">
-        <div className="absolute inset-0 rounded-full bg-glow/25 blur-3xl" />
-        <div className="absolute left-[10%] top-[20%] size-1/3 rounded-full bg-amber-300/40 blur-2xl" />
-        <div className="absolute bottom-[15%] right-[10%] size-1/3 rounded-full bg-glow-2/40 blur-2xl" />
-        <div className="glass glow-ring absolute inset-[30%] rounded-3xl" />
-      </div>
-    </div>
-  );
-}
+import HeroArt from "./hero-art";
 
 const TITLE_LINES = [
   ["Toda", "a", "sua"],
@@ -72,18 +20,18 @@ const TITLE_LINES = [
   ["num", "só", "lugar."],
 ] as const;
 const GRADIENT_LINE = 2;
+const SPOT = 1040;
 
 const container = {
   hidden: {},
   show: { transition: { staggerChildren: 0.07, delayChildren: 0.15 } },
 };
 const word = {
-  hidden: { opacity: 0, y: "0.7em", rotateX: -50, filter: "blur(10px)" },
+  hidden: { opacity: 0, y: "0.7em", rotateX: -50 },
   show: {
     opacity: 1,
     y: 0,
     rotateX: 0,
-    filter: "blur(0px)",
     transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as const },
   },
 };
@@ -96,11 +44,9 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
   const reduced = useReducedMotion() ?? false;
   const ref = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(true);
-  const [webgl, setWebgl] = useState<boolean | null>(null);
 
-  // pausa o render 3D fora da viewport ou com a aba oculta
+  // pausa as animações fora da viewport ou com a aba oculta
   useEffect(() => {
-    setWebgl(hasWebGL());
     const el = ref.current;
     if (!el) return;
     let intersecting = true;
@@ -122,12 +68,18 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
     };
   }, []);
 
-  // brilho que segue o cursor
-  const mx = useMotionValue(50);
-  const my = useMotionValue(40);
+  // brilho que segue o cursor (só transform; desligado em toque)
+  const mx = useMotionValue(0);
+  const my = useMotionValue(0);
   const sx = useSpring(mx, { stiffness: 80, damping: 20 });
   const sy = useSpring(my, { stiffness: 80, damping: 20 });
-  const spot = useMotionTemplate`radial-gradient(520px circle at ${sx}% ${sy}%, color-mix(in oklch, var(--glow) 22%, transparent), transparent 70%)`;
+
+  useEffect(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    mx.jump(r.width * 0.5 - SPOT / 2);
+    my.jump(r.height * 0.4 - SPOT / 2);
+  }, [mx, my]);
 
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const contentY = useTransform(scrollYProgress, [0, 1], [0, reduced ? 0 : 90]);
@@ -141,20 +93,26 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
     <section
       ref={ref}
       onPointerMove={(e) => {
+        if (e.pointerType !== "mouse" || reduced) return;
         const r = e.currentTarget.getBoundingClientRect();
-        mx.set(((e.clientX - r.left) / r.width) * 100);
-        my.set(((e.clientY - r.top) / r.height) * 100);
+        mx.set(e.clientX - r.left - SPOT / 2);
+        my.set(e.clientY - r.top - SPOT / 2);
       }}
       className="relative isolate flex min-h-svh items-center overflow-hidden pb-16 pt-28"
     >
       {/* fundo: aurora, spot, grade em perspectiva */}
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-        <div className="aurora">
-          <span />
-          <span />
-          <span />
-        </div>
-        <motion.div className="absolute inset-0" style={{ background: spot }} />
+        <motion.div
+          className="absolute left-0 top-0 [@media(pointer:coarse)]:hidden"
+          style={{
+            x: sx,
+            y: sy,
+            width: SPOT,
+            height: SPOT,
+            backgroundImage:
+              "radial-gradient(closest-side, color-mix(in oklch, var(--glow) 22%, transparent), transparent)",
+          }}
+        />
         <div
           className="absolute inset-x-0 bottom-0 h-[55%] [mask-image:linear-gradient(to_top,black,transparent)]"
           style={{ perspective: "500px" }}
@@ -172,7 +130,7 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
       </div>
 
-      {/* cena 3D */}
+      {/* cena em SVG leve */}
       <motion.div
         style={{ y: sceneY }}
         className="pointer-events-none absolute inset-0 -z-[5]"
@@ -180,14 +138,8 @@ export function Hero({ signedIn = false }: { signedIn?: boolean }) {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 1.4, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
       >
-        <div className="absolute inset-0 opacity-30 lg:opacity-100">
-          {webgl === false ? (
-            <StaticFallback />
-          ) : webgl ? (
-            <SceneBoundary fallback={<StaticFallback />}>
-              <HeroScene active={visible} reducedMotion={reduced} />
-            </SceneBoundary>
-          ) : null}
+        <div className="absolute inset-0 opacity-40 lg:opacity-100">
+          <HeroArt active={visible} reducedMotion={reduced} />
         </div>
       </motion.div>
 

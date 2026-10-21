@@ -36,11 +36,12 @@ export function useSceneVisible(ref: RefObject<Element | null>, margin = "100px"
  * `frameloop="demand"` no Canvas). Parado quando `active` é falso.
  */
 export function FrameDriver({ active, fps = 30 }: { active: boolean; fps?: number }) {
+  const rate = useAdaptiveFps(fps);
   const invalidate = useThree((state) => state.invalidate);
 
   useEffect(() => {
     if (!active) return;
-    const interval = 1000 / fps;
+    const interval = 1000 / rate;
     let raf = 0;
     let last = 0;
     const tick = (now: number) => {
@@ -51,7 +52,19 @@ export function FrameDriver({ active, fps = 30 }: { active: boolean; fps?: numbe
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [active, fps, invalidate]);
+  }, [active, rate, invalidate]);
 
   return null;
+}
+
+/** Menos quadros para quem pede menos movimento, economiza dados ou tem pouca CPU. */
+function useAdaptiveFps(fps: number) {
+  const [rate, setRate] = useState(fps);
+  useEffect(() => {
+    const nav = navigator as Navigator & { connection?: { saveData?: boolean } };
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const weak = (nav.hardwareConcurrency ?? 8) <= 4 || nav.connection?.saveData === true;
+    setRate(reduced ? Math.min(fps, 8) : weak ? Math.min(fps, 20) : fps);
+  }, [fps]);
+  return rate;
 }

@@ -4,8 +4,9 @@ import { IPC } from "../shared/types";
 import { preloadPath, rendererFile } from "./paths";
 import type { ConfigStore } from "./store";
 
-export const WIDGET_WIDTH = 380;
-export const WIDGET_HEIGHT = 660;
+/** Proporção do painel do house-control (cartão alto de 440x800, igual ao do house-control). */
+export const WIDGET_WIDTH = 440;
+export const WIDGET_HEIGHT = 800;
 /** Margem transparente ao redor do painel, para a sombra CSS não ser cortada. */
 const PAD = 14;
 
@@ -41,7 +42,7 @@ export class WidgetWindow {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        backgroundThrottling: false,
+        backgroundThrottling: true, // janela oculta/coberta não gasta GPU
       },
     });
 
@@ -100,7 +101,16 @@ export class WidgetWindow {
     this.show(trayBounds);
   }
 
+  /** Em telas baixas o cartão encolhe (o layout é fluido) em vez de passar da área útil. */
+  private fitToDisplay(point?: { x: number; y: number }): void {
+    const { workArea } = point ? screen.getDisplayNearestPoint(point) : screen.getDisplayMatching(this.window.getBounds());
+    const height = Math.max(560, Math.min(WIDGET_HEIGHT + PAD * 2, workArea.height - 8));
+    const [w, h] = this.window.getSize();
+    if (w !== undefined && h !== undefined && h !== height) this.window.setSize(w, height);
+  }
+
   show(trayBounds?: Rectangle): void {
+    this.fitToDisplay(trayBounds ? { x: trayBounds.x + trayBounds.width / 2, y: trayBounds.y + trayBounds.height / 2 } : undefined);
     if (this.pinned) this.moveToPinnedPosition();
     else this.anchorTo(trayBounds);
     this.window.show();

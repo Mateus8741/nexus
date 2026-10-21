@@ -1,0 +1,11 @@
+{
+  "id": "nexus.homeassistant",
+  "name": "Home Assistant",
+  "version": "0.1.0",
+  "description": "Descobre e controla luzes, interruptores, climatização (climate) e sensores de temperatura de uma instância Home Assistant pela API REST (token de acesso de longa duração), via polling.",
+  "author": "Nexus",
+  "capabilities": ["device-adapter"],
+  "engines": {
+    "nexus": "^0.1.0"
+  }
+}

@@ -352,9 +352,10 @@ export function buildRoom(): string {
 /** Cria o renderer 3D dentro de `.room`. Chamar uma vez após inserir o HTML. */
 export function mountRoom(root: HTMLElement): void {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.autoUpdate = false; // cena estática: sombras renderizadas só nos primeiros quadros
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.85;
   renderer.domElement.style.cssText = "width:100%;height:100%;display:block";
@@ -369,7 +370,7 @@ export function mountRoom(root: HTMLElement): void {
   const moon = new THREE.DirectionalLight("#8fb0ff", 1.1);
   moon.position.set(-5, 11, -6);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
+  moon.shadow.mapSize.set(1024, 1024);
   Object.assign(moon.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 });
   moon.shadow.bias = -0.0004;
   scene.add(moon);
@@ -505,9 +506,17 @@ export function mountRoom(root: HTMLElement): void {
   resize();
 
   const clock = new THREE.Clock();
-  const tick = (): void => {
+  const FRAME_MS = 1000 / 30; // o widget vive o dia todo: 30 quadros bastam
+  let lastFrame = 0;
+  let shadowFrames = 3;
+  const tick = (now = performance.now()): void => {
     requestAnimationFrame(tick);
-    if (document.hidden) return;
+    if (document.hidden || now - lastFrame < FRAME_MS - 1) return;
+    lastFrame = now;
+    if (shadowFrames > 0) {
+      renderer.shadowMap.needsUpdate = true;
+      shadowFrames--;
+    }
     const dt = Math.min(clock.getDelta(), 0.1);
     const t = clock.elapsedTime;
 

@@ -45,6 +45,7 @@ import {
   TimerHealthMonitor,
   WebSocketAgentGateway,
 } from "@nexus/infrastructure";
+import { createHomeAssistantPlugin } from "@nexus/plugin-homeassistant";
 import { createLgThinqPlugin } from "@nexus/plugin-lg-thinq";
 import { createTuyaPlugin } from "@nexus/plugin-tuya";
 import { createWindowsPlugin } from "@nexus/plugin-windows";
@@ -92,6 +93,16 @@ const LGTHINQ_COUNTRY_CODE = process.env.LGTHINQ_COUNTRY_CODE;
 const LGTHINQ_SPACE_ID = process.env.LGTHINQ_SPACE_ID;
 const LGTHINQ_POLL_INTERVAL_MS = process.env.LGTHINQ_POLL_INTERVAL_MS
   ? Number(process.env.LGTHINQ_POLL_INTERVAL_MS)
+  : undefined;
+
+// Home Assistant (opcional): mesma lógica do LG ThinQ — uma instância por
+// deploy, token de acesso de longa duração vindo do ambiente (nunca logado).
+// HOMEASSISTANT_URL ex.: http://homeassistant.local:8123 (ver .env.example).
+const HOMEASSISTANT_URL = process.env.HOMEASSISTANT_URL;
+const HOMEASSISTANT_TOKEN = process.env.HOMEASSISTANT_TOKEN;
+const HOMEASSISTANT_SPACE_ID = process.env.HOMEASSISTANT_SPACE_ID;
+const HOMEASSISTANT_POLL_INTERVAL_MS = process.env.HOMEASSISTANT_POLL_INTERVAL_MS
+  ? Number(process.env.HOMEASSISTANT_POLL_INTERVAL_MS)
   : undefined;
 
 async function bootstrap(): Promise<void> {
@@ -325,6 +336,32 @@ async function bootstrap(): Promise<void> {
     );
   }
 
+  const homeAssistantEnabled = Boolean(HOMEASSISTANT_URL && HOMEASSISTANT_TOKEN);
+  let homeAssistantBundle: ReturnType<typeof createHomeAssistantPlugin> | undefined;
+  if (homeAssistantEnabled) {
+    try {
+      homeAssistantBundle = createHomeAssistantPlugin({
+        baseUrl: HOMEASSISTANT_URL as string,
+        token: HOMEASSISTANT_TOKEN as string,
+        spaceId: HOMEASSISTANT_SPACE_ID,
+        pollIntervalMs: HOMEASSISTANT_POLL_INTERVAL_MS,
+        capabilityRegistry,
+      });
+    } catch (error) {
+      logger.error(
+        `Home Assistant plugin desativado — configuração inválida: ${error instanceof Error ? error.message : "erro desconhecido"}`,
+      );
+    }
+  }
+  if (homeAssistantBundle) {
+    providers.push(homeAssistantBundle.provider);
+    deviceProviderRegistry.register(homeAssistantBundle.provider);
+  } else if (!homeAssistantEnabled) {
+    logger.info(
+      "Home Assistant plugin desativado — defina HOMEASSISTANT_URL e HOMEASSISTANT_TOKEN para ativar (ver .env.example).",
+    );
+  }
+
   const source: PluginSource = {
     discover(): PluginCandidate[] {
       const candidates: PluginCandidate[] = [
@@ -335,6 +372,12 @@ async function bootstrap(): Promise<void> {
       }
       if (lgThinqBundle) {
         candidates.push({ source: "built-in:@nexus/plugin-lg-thinq", value: lgThinqBundle.plugin });
+      }
+      if (homeAssistantBundle) {
+        candidates.push({
+          source: "built-in:@nexus/plugin-homeassistant",
+          value: homeAssistantBundle.plugin,
+        });
       }
       return candidates;
     },
@@ -361,6 +404,10 @@ async function bootstrap(): Promise<void> {
   }
   if (lgThinqBundle) {
     await attachDeviceProvider.attach(lgThinqBundle.provider);
+  }
+
+  if (homeAssistantBundle) {
+    await attachDeviceProvider.attach(homeAssistantBundle.provider);
   }
 
   for (const plugin of loadResult.loaded) {
