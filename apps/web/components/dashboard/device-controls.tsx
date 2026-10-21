@@ -11,11 +11,16 @@ import { useMemo, useState, useTransition } from "react";
 import { DeviceActionForm } from "@/components/dashboard/device-action-form";
 import { DeviceCommandTerminal } from "@/components/dashboard/device-command-terminal";
 import { runDeviceAction } from "@/lib/actions/device-actions";
+import { guessPowerState } from "@/lib/devices/view";
 
 interface DeviceControlsProps {
   readonly deviceId: string;
   readonly actions: readonly ResolvedDeviceAction[];
   readonly attributes: Readonly<Record<string, DeviceAttributeValue>>;
+  /** Esconde o switch de energia (quando o card já tem o seu). */
+  readonly hidePower?: boolean;
+  /** Já começa com os detalhes ("Avançado") abertos. */
+  readonly defaultOpen?: boolean;
 }
 
 interface QuickControl {
@@ -40,28 +45,6 @@ interface Classified {
   readonly quick: readonly QuickControl[];
   readonly advanced: readonly ResolvedDeviceAction[];
   readonly commandAction?: ResolvedDeviceAction;
-}
-
-const ON_VALUES = new Set(["on", "true", "power_on", "1"]);
-const OFF_VALUES = new Set(["off", "false", "power_off", "0"]);
-
-/**
- * Heurística só pra decidir a posição INICIAL do toggle de energia — nunca
- * usada pra decidir se uma ação existe (isso é sempre `device.capabilities`
- * + CapabilityRegistry, ver @nexus/domain). Se não achar nada reconhecível,
- * o toggle nasce "desligado" até o usuário interagir ou a página recarregar.
- */
-function guessPowerState(attributes: Readonly<Record<string, DeviceAttributeValue>>): boolean {
-  for (const [key, value] of Object.entries(attributes)) {
-    if (!/power|switch/i.test(key)) continue;
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string") {
-      const normalized = value.toLowerCase();
-      if (ON_VALUES.has(normalized)) return true;
-      if (OFF_VALUES.has(normalized)) return false;
-    }
-  }
-  return false;
 }
 
 /**
@@ -113,7 +96,13 @@ function classify(actions: readonly ResolvedDeviceAction[]): Classified {
       const type = fieldPrimitiveType(schema);
       const detail = typeof schema === "string" ? undefined : schema;
 
-      if (type === "number" && detail && "min" in detail && detail.min !== undefined && detail.max !== undefined) {
+      if (
+        type === "number" &&
+        detail &&
+        "min" in detail &&
+        detail.min !== undefined &&
+        detail.max !== undefined
+      ) {
         quick.push({
           key: `${action.capabilityKey}-${action.actionType}`,
           kind: "slider",
@@ -127,7 +116,13 @@ function classify(actions: readonly ResolvedDeviceAction[]): Classified {
         });
         continue;
       }
-      if (type === "string" && detail && "options" in detail && detail.options && detail.options.length > 0) {
+      if (
+        type === "string" &&
+        detail &&
+        "options" in detail &&
+        detail.options &&
+        detail.options.length > 0
+      ) {
         quick.push({
           key: `${action.capabilityKey}-${action.actionType}`,
           kind: "select",
@@ -168,13 +163,19 @@ function prettifyAttributeKey(key: string): string {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-export function DeviceControls({ deviceId, actions, attributes }: DeviceControlsProps) {
+export function DeviceControls({
+  deviceId,
+  actions,
+  attributes,
+  hidePower,
+  defaultOpen,
+}: DeviceControlsProps) {
   const classified = useMemo(() => classify(actions), [actions]);
   const [isPending, startTransition] = useTransition();
   const [powerOn, setPowerOn] = useState(() => guessPowerState(attributes));
   const [sliderValues, setSliderValues] = useState<Record<string, number>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(defaultOpen));
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [openFormActionType, setOpenFormActionType] = useState<string | null>(null);
 
@@ -185,7 +186,7 @@ export function DeviceControls({ deviceId, actions, attributes }: DeviceControls
     setFeedback(null);
     startTransition(async () => {
       const result = await runDeviceAction(deviceId, { type: action.actionType, payload });
-      setFeedback(result.success ? null : result.error ?? "Falhou.");
+      setFeedback(result.success ? null : (result.error ?? "Falhou."));
     });
   }
 
@@ -203,7 +204,7 @@ export function DeviceControls({ deviceId, actions, attributes }: DeviceControls
 
   return (
     <div className="flex flex-col gap-3">
-      {classified.power ? (
+      {classified.power && !hidePower ? (
         <div className="flex items-center justify-between">
           <span className="text-sm text-foreground">{powerOn ? "Ligado" : "Desligado"}</span>
           <div className="flex items-center gap-2">
@@ -277,7 +278,9 @@ export function DeviceControls({ deviceId, actions, attributes }: DeviceControls
             aria-expanded={detailsOpen}
           >
             <span>Avançado</span>
-            <ChevronDown className={`size-3.5 transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
+            <ChevronDown
+              className={`size-3.5 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
+            />
           </button>
 
           {detailsOpen ? (
@@ -323,7 +326,10 @@ export function DeviceControls({ deviceId, actions, attributes }: DeviceControls
                     {terminalOpen ? "Fechar terminal" : classified.commandAction.label}
                   </Button>
                   {terminalOpen ? (
-                    <DeviceCommandTerminal deviceId={deviceId} onClose={() => setTerminalOpen(false)} />
+                    <DeviceCommandTerminal
+                      deviceId={deviceId}
+                      onClose={() => setTerminalOpen(false)}
+                    />
                   ) : null}
                 </div>
               ) : null}

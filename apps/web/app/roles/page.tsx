@@ -5,14 +5,15 @@ import { AdminTable } from "@/components/admin/admin-table";
 export default function RolesPage() {
   return (
     <AdminTable
-      title="Roles & Permissions"
+      title="Papéis e permissões"
+      description="O que cada papel pode ver e fazer neste workspace."
       queryKey="roles"
       path="/roles"
       columns={[
-        { key: "key", label: "Key" },
-        { key: "name", label: "Name" },
-        { key: "system", label: "System" },
-        { key: "permissions", label: "Permissions" },
+        { key: "name", label: "Nome" },
+        { key: "key", label: "Chave" },
+        { key: "system", label: "Sistema" },
+        { key: "permissions", label: "Permissões" },
       ]}
     />
   );

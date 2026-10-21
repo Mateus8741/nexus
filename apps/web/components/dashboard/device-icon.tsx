@@ -1,28 +1,27 @@
 import { cn } from "@nexus/ui/lib/utils";
-import { AirVent, Camera, Cpu, Lightbulb, Monitor, Radio, ToggleLeft } from "lucide-react";
+import { AirVent, Camera, Cpu, Laptop, Lightbulb, Monitor, Plug, Radio } from "lucide-react";
 
-/**
- * Ícone por `device.kind` — só decoração, nunca usado para decidir que
- * ações um dispositivo tem (isso vem de `device.capabilities`, ver
- * @nexus/domain). Kinds desconhecidos caem no ícone genérico (Cpu): um
- * plugin novo com um `kind` novo não quebra nada, só fica menos bonito até
- * alguém adicionar um mapeamento aqui.
- */
-const KIND_ICON: Record<string, typeof Cpu> = {
+import type { DeviceCategory } from "@/lib/devices/view";
+
+const CATEGORY_ICON: Record<DeviceCategory, typeof Cpu> = {
   light: Lightbulb,
-  switch: ToggleLeft,
+  plug: Plug,
   climate: AirVent,
   computer: Monitor,
   sensor: Radio,
   camera: Camera,
+  other: Cpu,
 };
 
 interface DeviceIconProps {
-  kind: string;
+  category: DeviceCategory;
+  /** `laptop` troca o ícone de computador (ex.: macOS). */
+  laptop?: boolean;
   className?: string;
 }
 
-export function DeviceIcon({ kind, className }: DeviceIconProps) {
-  const Icon = KIND_ICON[kind] ?? Cpu;
+/** Ícone por categoria — só decoração (o que o dispositivo faz vem das capabilities). */
+export function DeviceIcon({ category, laptop, className }: DeviceIconProps) {
+  const Icon = category === "computer" && laptop ? Laptop : CATEGORY_ICON[category];
   return <Icon className={cn("size-5", className)} />;
 }

@@ -1,99 +1,68 @@
 "use client";
 
-import { ScrollArea } from "@nexus/ui/components/scroll-area";
-import { cn } from "@nexus/ui/lib/utils";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import Link from "next/link";
+import { motion } from "motion/react";
 import { usePathname } from "next/navigation";
 
+import { Brand } from "./brand";
 import { navSections } from "./nav-items";
+import { NavLink } from "./nav-link";
 
 interface SidebarProps {
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }
 
-/**
- * Sidebar fixa (desktop). Some no mobile — ver mobile-sidebar.tsx para o
- * equivalente em telas pequenas.
- */
+/** Sidebar fixa (desktop) que encolhe com animação de mola. */
 export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   const pathname = usePathname();
 
   return (
-    <aside
-      className={cn(
-        "sticky top-0 hidden h-svh shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 md:flex",
-        collapsed ? "w-14" : "w-60",
-      )}
+    <motion.aside
+      initial={false}
+      animate={{ width: collapsed ? 76 : 248 }}
+      transition={{ type: "spring", stiffness: 300, damping: 32 }}
+      className="glass sticky top-0 hidden h-svh shrink-0 flex-col rounded-none border-y-0 border-l-0 md:flex"
     >
-      <div
-        className={cn(
-          "flex h-14 shrink-0 items-center border-b border-border px-4",
-          collapsed && "justify-center px-0",
-        )}
-      >
-        <Link
-          href="/"
-          className="flex items-center gap-2 font-semibold tracking-tight text-foreground"
-        >
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-            N
-          </span>
-          {!collapsed && <span>Nexus</span>}
-        </Link>
+      <div className="flex h-16 shrink-0 items-center px-4">
+        <Brand compact={collapsed} />
       </div>
 
-      <ScrollArea className="flex-1">
-        <nav className="flex flex-col gap-4 p-2">
-          {navSections.map((section) => (
-            <div key={section.title} className="flex flex-col gap-1">
-              {!collapsed && (
-                <span className="px-2 pt-1 text-xs font-medium text-muted-foreground">
-                  {section.title}
-                </span>
-              )}
-              {section.items.map((item) => {
-                const isActive = pathname === item.href && item.implemented;
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    title={collapsed ? item.label : undefined}
-                    aria-disabled={!item.implemented}
-                    aria-current={isActive ? "page" : undefined}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors",
-                      item.implemented && "hover:bg-accent hover:text-accent-foreground",
-                      isActive && "bg-accent text-accent-foreground",
-                      !item.implemented && "pointer-events-none opacity-50",
-                      collapsed && "justify-center px-0",
-                    )}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-      </ScrollArea>
+      <nav
+        className="flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-3 py-2"
+        aria-label="Principal"
+      >
+        {navSections.map((section) => (
+          <div key={section.title} className="flex flex-col gap-0.5">
+            {!collapsed && (
+              <span className="px-2.5 pb-1 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                {section.title}
+              </span>
+            )}
+            {section.items.map((item) => (
+              <NavLink
+                key={item.label}
+                item={item}
+                collapsed={collapsed}
+                pillId="nav-pill-desktop"
+                active={item.implemented && pathname === item.href}
+              />
+            ))}
+          </div>
+        ))}
+      </nav>
 
-      <div className="shrink-0 border-t border-border p-2">
+      <div className="shrink-0 p-3">
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            collapsed && "justify-center px-0",
-          )}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+          className="flex w-full items-center justify-center gap-2 rounded-xl px-2.5 py-2 text-sm text-muted-foreground outline-none transition-colors hover:bg-white/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           {!collapsed && <span>Recolher</span>}
         </button>
       </div>
-    </aside>
+    </motion.aside>
   );
 }

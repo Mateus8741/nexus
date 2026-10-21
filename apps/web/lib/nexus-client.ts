@@ -7,6 +7,16 @@ import {
 import type { CapabilityDefinition, Device, DeviceEvent } from "@nexus/domain";
 import { cookies } from "next/headers";
 
+import {
+  demoCapabilities,
+  demoDevices,
+  demoEvents,
+  demoPlugins,
+  demoProviders,
+  demoSpaces,
+} from "@/lib/demo/data";
+import { isDemoMode } from "@/lib/demo/mode";
+
 const BASE_URL = process.env.NEXUS_PLUGIN_HOST_URL ?? "http://localhost:4700";
 
 export interface PluginSummaryDto {
@@ -20,6 +30,11 @@ export interface ProviderSummaryDto {
   readonly id: string;
   readonly name: string;
   readonly deviceCount: number;
+}
+
+export interface SpaceDto {
+  readonly id: string;
+  readonly name: string;
 }
 
 async function cookieHeader(): Promise<string> {
@@ -44,6 +59,7 @@ async function fetchJson<T>(path: string): Promise<T> {
 }
 
 export async function fetchDevices(): Promise<Device[]> {
+  if (await isDemoMode()) return demoDevices;
   try {
     const dtos = await fetchJson<DeviceDto[]>("/devices");
     return dtos.map(fromDeviceDto);
@@ -54,6 +70,7 @@ export async function fetchDevices(): Promise<Device[]> {
 }
 
 export async function fetchEvents(limit = 50): Promise<DeviceEvent[]> {
+  if (await isDemoMode()) return demoEvents;
   try {
     const dtos = await fetchJson<DeviceEventDto[]>(`/events/device?limit=${limit}`);
     return dtos.map(fromDeviceEventDto);
@@ -64,6 +81,7 @@ export async function fetchEvents(limit = 50): Promise<DeviceEvent[]> {
 }
 
 export async function fetchPlugins(): Promise<PluginSummaryDto[]> {
+  if (await isDemoMode()) return demoPlugins;
   try {
     return await fetchJson<PluginSummaryDto[]>("/plugins");
   } catch (error) {
@@ -73,6 +91,7 @@ export async function fetchPlugins(): Promise<PluginSummaryDto[]> {
 }
 
 export async function fetchProviders(): Promise<ProviderSummaryDto[]> {
+  if (await isDemoMode()) return demoProviders;
   try {
     return await fetchJson<ProviderSummaryDto[]>("/providers");
   } catch (error) {
@@ -81,7 +100,18 @@ export async function fetchProviders(): Promise<ProviderSummaryDto[]> {
   }
 }
 
+export async function fetchSpaces(): Promise<SpaceDto[]> {
+  if (await isDemoMode()) return demoSpaces;
+  try {
+    return await fetchJson<SpaceDto[]>("/spaces");
+  } catch (error) {
+    console.warn("[nexus-client] falha ao buscar /spaces, seguindo com lista vazia:", error);
+    return [];
+  }
+}
+
 export async function fetchCapabilities(): Promise<CapabilityDefinition[]> {
+  if (await isDemoMode()) return demoCapabilities;
   try {
     return await fetchJson<CapabilityDefinition[]>("/capabilities");
   } catch (error) {
@@ -105,6 +135,10 @@ export async function executeDeviceAction(
   deviceId: string,
   action: DeviceActionInput,
 ): Promise<DeviceActionOutcome> {
+  if (await isDemoMode()) {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    return { success: true };
+  }
   try {
     const response = await fetch(`${BASE_URL}/devices/${deviceId}/actions`, {
       method: "POST",

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { Aurora } from "@/components/layout/aurora";
 import { Providers } from "@/components/providers";
 
 const geistSans = Geist({
@@ -18,6 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Nexus",
   description: "Plataforma de gerenciamento de ambientes conectados.",
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({
@@ -31,6 +33,7 @@ export default function RootLayout({
       className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
+        <Aurora />
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

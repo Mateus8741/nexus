@@ -1,8 +1,10 @@
 "use client";
 
+import { Rocket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
+import { ActionButton, Field, TextInput } from "@/components/ui/form";
 import { CORE_URL } from "@/lib/api";
 
 export function SetupForm() {
@@ -45,56 +47,38 @@ export function SetupForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-sm flex-col gap-3 p-6">
-      <h1 className="text-xl font-semibold">Setup inicial</h1>
-      <p className="text-sm text-muted-foreground">Crie o Owner e o workspace padrão.</p>
-      <label className="flex flex-col gap-1 text-sm">
-        Nome
-        <input
-          className="rounded border border-border bg-background px-3 py-2"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Email
-        <input
-          className="rounded border border-border bg-background px-3 py-2"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Senha
-        <input
-          className="rounded border border-border bg-background px-3 py-2"
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Field label="Nome">
+        <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
+      </Field>
+      <Field label="Email">
+        <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </Field>
+      <Field label="Senha">
+        <TextInput
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={8}
         />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Workspace
-        <input
-          className="rounded border border-border bg-background px-3 py-2"
+      </Field>
+      <Field label="Workspace">
+        <TextInput
           value={workspaceName}
           onChange={(e) => setWorkspaceName(e.target.value)}
           required
         />
-      </label>
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-      >
-        {loading ? "Criando..." : "Criar Owner"}
-      </button>
+      </Field>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <ActionButton type="submit" disabled={loading} className="mt-1">
+        <Rocket className="size-4" />
+        {loading ? "Criando…" : "Criar Owner"}
+      </ActionButton>
     </form>
   );
 }

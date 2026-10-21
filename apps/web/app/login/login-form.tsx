@@ -1,8 +1,11 @@
 "use client";
 
+import { LogIn } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
+import { ActionButton, Field, TextInput } from "@/components/ui/form";
 import { authClient } from "@/lib/auth-client";
 
 export function LoginForm() {
@@ -28,38 +31,42 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-sm flex-col gap-3 p-6">
-      <h1 className="text-xl font-semibold">Login</h1>
-      <label className="flex flex-col gap-1 text-sm">
-        Email
-        <input
-          className="rounded border border-border bg-background px-3 py-2"
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Field label="Email">
+        <TextInput
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
           autoComplete="email"
         />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Senha
-        <input
-          className="rounded border border-border bg-background px-3 py-2"
+      </Field>
+      <Field label="Senha">
+        <TextInput
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           autoComplete="current-password"
         />
-      </label>
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
-      <button
-        type="submit"
-        disabled={loading}
-        className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-      >
-        {loading ? "Entrando..." : "Entrar"}
-      </button>
+      </Field>
+      <AnimatePresence>
+        {error && (
+          <motion.p
+            role="alert"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto", x: [0, -6, 6, -4, 4, 0] }}
+            exit={{ opacity: 0, height: 0 }}
+            className="text-sm text-destructive"
+          >
+            {error}
+          </motion.p>
+        )}
+      </AnimatePresence>
+      <ActionButton type="submit" disabled={loading} className="mt-1">
+        <LogIn className="size-4" />
+        {loading ? "Entrando…" : "Entrar"}
+      </ActionButton>
     </form>
   );
 }

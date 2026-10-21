@@ -1,9 +1,10 @@
+import { AuthLayout } from "@/components/auth/auth-layout";
 import { SetupForm } from "./setup-form";
 
 export default function SetupPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center">
+    <AuthLayout title="Vamos começar" subtitle="Crie o Owner e o workspace padrão do Nexus.">
       <SetupForm />
-    </main>
+    </AuthLayout>
   );
 }

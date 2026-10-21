@@ -126,7 +126,9 @@ export function DeviceActionForm({ deviceId, action, onClose }: DeviceActionForm
 
       {feedback ? (
         <span
-          className={feedback.ok ? "text-[0.65rem] text-emerald-500" : "text-[0.65rem] text-red-500"}
+          className={
+            feedback.ok ? "text-[0.65rem] text-emerald-500" : "text-[0.65rem] text-red-500"
+          }
         >
           {feedback.message}
         </span>

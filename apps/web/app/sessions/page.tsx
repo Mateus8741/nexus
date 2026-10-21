@@ -1,30 +1,32 @@
 "use client";
 
+import { LogOut } from "lucide-react";
+
 import { AdminTable } from "@/components/admin/admin-table";
+import { ActionButton } from "@/components/ui/form";
 import { authClient } from "@/lib/auth-client";
 
 export default function SessionsPage() {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between p-4">
-        <h1 className="text-lg font-semibold">Sessions</h1>
-        <button
-          type="button"
-          className="rounded border border-border px-3 py-1.5 text-sm"
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <ActionButton
+          variant="ghost"
           onClick={() => void authClient.signOut().then(() => (window.location.href = "/login"))}
         >
-          Logout
-        </button>
+          <LogOut className="size-4" /> Sair
+        </ActionButton>
       </div>
       <AdminTable
-        title="Current session"
+        title="Sessões"
+        description="Onde sua conta está conectada agora."
         queryKey="sessions"
         path="/sessions"
         columns={[
-          { key: "id", label: "Session ID" },
-          { key: "expiresAt", label: "Expires" },
+          { key: "id", label: "Sessão" },
+          { key: "expiresAt", label: "Expira" },
           { key: "ipAddress", label: "IP" },
-          { key: "userAgent", label: "User agent" },
+          { key: "userAgent", label: "Navegador" },
         ]}
       />
     </div>

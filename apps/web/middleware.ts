@@ -4,7 +4,25 @@ import { NextResponse } from "next/server";
 const PUBLIC_PATHS = ["/login", "/setup"];
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
+
+  // Modo demonstração (?demo=1 liga, ?demo=0 desliga) — ver lib/demo/mode.ts.
+  const demoParam = searchParams.get("demo");
+  if (demoParam === "1" || demoParam === "0") {
+    const url = request.nextUrl.clone();
+    url.searchParams.delete("demo");
+    const redirect = NextResponse.redirect(url);
+    if (demoParam === "1") {
+      redirect.cookies.set("nexus-demo", "1", { path: "/", maxAge: 60 * 60 * 24 * 7 });
+    } else {
+      redirect.cookies.delete("nexus-demo");
+    }
+    return redirect;
+  }
+
+  if (request.cookies.get("nexus-demo")?.value === "1" && !pathname.startsWith("/_next")) {
+    return NextResponse.next();
+  }
 
   if (
     PUBLIC_PATHS.some((path) => pathname.startsWith(path)) ||

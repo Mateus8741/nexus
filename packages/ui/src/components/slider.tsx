@@ -3,7 +3,11 @@ import { cn } from "@nexus/ui/lib/utils";
 
 function Slider({ className, ...props }: SliderPrimitive.Root.Props<number>) {
   return (
-    <SliderPrimitive.Root data-slot="slider" className={cn("relative flex w-full items-center", className)} {...props}>
+    <SliderPrimitive.Root
+      data-slot="slider"
+      className={cn("relative flex w-full items-center", className)}
+      {...props}
+    >
       <SliderPrimitive.Control className="flex w-full touch-none items-center py-2 select-none">
         <SliderPrimitive.Track className="relative h-1.5 w-full grow rounded-full bg-input">
           <SliderPrimitive.Indicator className="absolute h-full rounded-full bg-primary" />

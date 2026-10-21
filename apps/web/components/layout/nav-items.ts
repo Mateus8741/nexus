@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   Cpu,
+  Download,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -33,6 +34,7 @@ export const navSections: NavSection[] = [
     items: [
       { label: "Dashboard", href: "/", icon: LayoutDashboard, implemented: true },
       { label: "Ambientes", href: "/spaces", icon: Layers, implemented: true },
+      { label: "Downloads", href: "/downloads", icon: Download, implemented: true },
       { label: "Dispositivos", href: "#", icon: Cpu, implemented: false },
     ],
   },
@@ -46,13 +48,13 @@ export const navSections: NavSection[] = [
   {
     title: "Segurança",
     items: [
-      { label: "Users", href: "/users", icon: Users, implemented: true },
+      { label: "Usuários", href: "/users", icon: Users, implemented: true },
       { label: "Agents", href: "/agents", icon: Server, implemented: true },
-      { label: "Pending Agents", href: "/agents/pending", icon: Shield, implemented: true },
+      { label: "Agents pendentes", href: "/agents/pending", icon: Shield, implemented: true },
       { label: "API Keys", href: "/api-keys", icon: KeyRound, implemented: true },
-      { label: "Roles", href: "/roles", icon: UserRound, implemented: true },
-      { label: "Sessions", href: "/sessions", icon: Activity, implemented: true },
-      { label: "Audit Logs", href: "/audit", icon: ScrollText, implemented: true },
+      { label: "Papéis", href: "/roles", icon: UserRound, implemented: true },
+      { label: "Sessões", href: "/sessions", icon: Activity, implemented: true },
+      { label: "Auditoria", href: "/audit", icon: ScrollText, implemented: true },
     ],
   },
   {
