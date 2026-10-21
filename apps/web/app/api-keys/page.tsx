@@ -14,10 +14,27 @@ import { apiFetch } from "@/lib/api";
 const DEFAULT_SCOPES = [
   "device.read",
   "device.write",
+  // Ações dos dispositivos (luz, tomada, ar-condicionado) usadas pelo widget e pelas cenas.
+  "action.turn_on",
+  "action.turn_off",
+  "action.toggle",
+  "action.set-target-temperature",
+  "action.set-mode",
+  "action.set-fan-speed",
+  "action.set-swing",
+  "action.set-display-light",
+  "action.set-resource",
+  "action.set-brightness",
+  "action.set-color",
+  "action.set-color-temperature",
+  "action.set-datapoint",
+  // Ações de PC (agent).
   "action.shutdown",
   "action.restart",
   "action.lock",
   "action.executeCommand",
+  // Listar os ambientes (abas do widget): o Core exige workspace.manage para GET /spaces.
+  "workspace.manage",
 ];
 
 export default function ApiKeysPage() {

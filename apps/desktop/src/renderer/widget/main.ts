@@ -324,6 +324,8 @@ function updateCard(card: HTMLElement, device: DeviceView): void {
   }
 }
 
+let lastLayout = "";
+
 function renderList(devices: DeviceView[]): void {
   const list = $("list");
   const scoped = tabDevices(devices).filter((d) => categorize(d) !== "sensor");
@@ -372,7 +374,13 @@ function renderList(devices: DeviceView[]): void {
     sections.push(section);
   }
   visibleIds = nextVisible;
-  list.replaceChildren(...sections);
+  // Só remonta o DOM quando a estrutura muda: trocar os cards de lugar a cada
+  // polling cancela cliques em andamento (mousedown/up em elemento reparentado).
+  const layout = order.map((key) => `${key}:${(groups.get(key) ?? []).map((d) => d.id).join(",")}`).join("|");
+  if (layout !== lastLayout || list.querySelector(".group") === null) {
+    lastLayout = layout;
+    list.replaceChildren(...sections);
+  }
 }
 
 function renderEmpty(list: HTMLElement, title: string, text: string, action?: string, onAction?: () => void): void {
@@ -417,7 +425,7 @@ function toast(message: string, bad = false): void {
   el.classList.toggle("bad", bad);
   el.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+  toastTimer = setTimeout(() => el.classList.remove("show"), bad ? 6000 : 2200);
 }
 
 function applyLocal(request: ActionRequest): void {
@@ -540,8 +548,12 @@ setInterval(() => {
 }, 1000);
 
 api.onSnapshot((next) => {
+  const unchanged =
+    snapshot !== undefined &&
+    JSON.stringify([snapshot.mode, snapshot.connection, snapshot.error, snapshot.devices, snapshot.spaces, snapshot.environmentName]) ===
+      JSON.stringify([next.mode, next.connection, next.error, next.devices, next.spaces, next.environmentName]);
   snapshot = next;
-  render();
+  if (!unchanged) render();
 });
 api.onAgentStatus((s) => {
   agentStatus = s;
