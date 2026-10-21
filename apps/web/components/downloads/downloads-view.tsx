@@ -21,10 +21,11 @@ import { PageHeader } from "@/components/ui/form";
 import { useClientValue } from "@/lib/use-client-value";
 
 const VERSION = "0.1.0";
-const BASE_URL = (process.env.NEXT_PUBLIC_NEXUS_DOWNLOAD_BASE_URL ?? "/downloads/files").replace(
-  /\/$/,
-  "",
-);
+/** Instaladores publicados como GitHub Release (repo público); sobrescreva por env se mudar de host. */
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_NEXUS_DOWNLOAD_BASE_URL ??
+  `https://github.com/Mateus8741/nexus/releases/download/desktop-v${VERSION}`
+).replace(/\/$/, "");
 
 type Platform = "windows" | "mac-arm" | "mac-intel";
 
