@@ -15,6 +15,7 @@
     "@nexus/domain": "workspace:*",
     "@nexus/infrastructure": "workspace:*",
     "@nexus/ui": "workspace:*",
+    "@react-three/fiber": "^9",
     "@tanstack/react-query": "^5.101.4",
     "better-auth": "1.2.12",
     "lucide-react": "^1.28.0",
@@ -22,7 +23,8 @@
     "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.10.1"
+    "recharts": "^3.10.1",
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@nexus/typescript-config": "workspace:*",
@@ -30,6 +32,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.186.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
