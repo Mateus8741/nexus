@@ -13,7 +13,7 @@ import {
 import type { ActionOutcome, ActionRequest, AgentStatus, DeviceView, NexusBridge, Snapshot } from "../../shared/types";
 import { icon } from "../shared/icons";
 import { buildPanel, type Panel } from "./controls";
-import { buildRoom, type RoomId, updateRoom } from "./room";
+import { buildRoom, mountRoom, type RoomId, updateRoom } from "./room";
 
 declare global {
   interface Window {
@@ -128,7 +128,8 @@ app.innerHTML = `
 `;
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
-const roomEl = $("hero-inner").querySelector("svg") as SVGElement;
+const roomEl = $("hero-inner").querySelector<HTMLElement>(".room") as HTMLElement;
+mountRoom(roomEl);
 
 for (const scene of SCENES) {
   const btn = html("button", "scene", `<span class="scene-ico">${icon(scene.icon, 20)}</span><span>${scene.label}</span>`);

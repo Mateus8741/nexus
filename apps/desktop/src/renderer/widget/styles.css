@@ -68,22 +68,8 @@ body { padding: 14px; }
 .hero { position: relative; height: 178px; margin: 0 8px; flex: none; perspective: 700px; }
 .hero-inner { height: 100%; -webkit-mask-image: linear-gradient(#000 80%, transparent); mask-image: linear-gradient(#000 80%, transparent); transform: translate(var(--tx, 0), var(--ty, 0)) rotateZ(var(--rot, 0)); transition: transform 0.5s var(--ease); animation: floaty 7s ease-in-out infinite; }
 @keyframes floaty { 50% { translate: 0 -5px; } }
-.room { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 20px 30px rgba(20, 40, 140, 0.35)); }
-.blk { animation: rise 0.7s var(--spring) both; animation-delay: calc(var(--i) * 40ms + 150ms); transform-box: fill-box; }
-@keyframes rise { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
-.glow { opacity: calc(0.04 + var(--lit, 0) * 0.96); transition: opacity 0.9s var(--ease); mix-blend-mode: screen; animation: breathe 5s ease-in-out infinite; }
-@keyframes breathe { 50% { transform: scale(1.06); } }
-.glow { transform-box: fill-box; transform-origin: center; }
-.bulb circle { fill: #4a5584; transition: fill 0.6s; }
-.bulb .halo { fill: rgba(255, 210, 130, 0.35); opacity: 0; transition: opacity 0.6s; }
+.room { width: 100%; height: 100%; }
 .bulb[data-on] circle:first-child { fill: #ffe0a3; }
-.bulb[data-on] .halo { opacity: 1; animation: pulse 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.dust { fill: #a9c4ff; opacity: 0; animation: dust 5s ease-in-out infinite; animation-delay: var(--d); }
-@keyframes dust { 0%, 100% { opacity: 0; transform: translateY(0); } 50% { opacity: 0.7; transform: translateY(-9px); } }
-.mist { opacity: 0; transition: opacity 0.8s; }
-.is-cool .mist { opacity: 1; }
-.wisp { fill: none; stroke: rgba(140, 215, 255, 0.55); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 6 10; animation: wisp 2.2s linear infinite; animation-delay: var(--d); filter: drop-shadow(0 0 4px rgba(120, 210, 255, 0.8)); }
-@keyframes wisp { to { stroke-dashoffset: -64; } }
 
 /* ---------- scenes */
 .scenes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 6px 14px 10px; position: relative; z-index: 1; }
