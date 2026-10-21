@@ -5,6 +5,8 @@ import { type ReactNode, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
+import { FrameDriver, useSceneVisible } from "./frame-driver";
+
 interface IsoRoomProps {
   /** Luzes ligadas / total de luzes. */
   readonly lightsOn: number;
@@ -14,6 +16,8 @@ interface IsoRoomProps {
   /** Atmosfera da cena ativa (cor CSS + 0–1 de claridade). */
   readonly tint?: string;
   readonly ambient?: number;
+  /** Versão leve (landing): sem sombras projetadas. */
+  readonly lite?: boolean;
 }
 
 /** Metros. x = direita, y = cima, z = em direção à câmera. Paredes em x=0 e z=0. */
@@ -198,7 +202,7 @@ function Bulb({
         distance={13}
         decay={1.6}
         castShadow={shadow}
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[512, 512]}
         shadow-bias={-0.0008}
       />
       {visible && (
@@ -732,7 +736,15 @@ const LAMPS = [
 
 const TOTAL_LIGHTS = PENDANTS.length + LAMPS.length;
 
-function Scene({ lightsOn, lightsTotal, computersOnline, acOn, tint, ambient = 1 }: IsoRoomProps) {
+function Scene({
+  lightsOn,
+  lightsTotal,
+  computersOnline,
+  acOn,
+  tint,
+  ambient = 1,
+  lite = false,
+}: IsoRoomProps) {
   const frac = lightsTotal === 0 ? 0 : lightsOn / lightsTotal;
   const tintColor = useMemo(() => cssToColor(tint), [tint]);
   const gain = 0.75 + 0.25 * ambient;
@@ -746,8 +758,8 @@ function Scene({ lightsOn, lightsTotal, computersOnline, acOn, tint, ambient = 1
         position={[-5, 11, -6]}
         intensity={1.1}
         color="#8fb0ff"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
+        castShadow={!lite}
+        shadow-mapSize={[1024, 1024]}
         shadow-camera-left={-12}
         shadow-camera-right={12}
         shadow-camera-top={12}
@@ -766,7 +778,14 @@ function Scene({ lightsOn, lightsTotal, computersOnline, acOn, tint, ambient = 1
         <AcWind on={acOn} />
 
         {PENDANTS.map((b, i) => (
-          <Pendant key={b.key} x={b.x} z={b.z} on={isOn(i)} gain={gain} shadow={b.shadow} />
+          <Pendant
+            key={b.key}
+            x={b.x}
+            z={b.z}
+            on={isOn(i)}
+            gain={gain}
+            shadow={b.shadow && !lite}
+          />
         ))}
 
         {/* abajur de piso */}
@@ -828,11 +847,15 @@ function Scene({ lightsOn, lightsTotal, computersOnline, acOn, tint, ambient = 1
 
 /** Cena 3D do ambiente (three.js): reage a luzes, PCs e AC; inclina com o mouse. */
 export function IsoRoom(props: IsoRoomProps) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const visible = useSceneVisible(wrapRef);
+
   return (
-    <div className="relative mx-auto aspect-[552/430] w-full max-w-[620px]">
+    <div ref={wrapRef} className="relative mx-auto aspect-[552/430] w-full max-w-[620px]">
       <Canvas
-        shadows="soft"
-        dpr={[1, 2]}
+        shadows={props.lite ? false : "percentage"}
+        frameloop="demand"
+        dpr={[1, 1.5]}
         camera={{ position: [17, 13.5, 17.5], fov: 22, near: 0.1, far: 80 }}
         gl={{ antialias: true, alpha: true }}
         onCreated={({ gl }) => {
@@ -841,6 +864,7 @@ export function IsoRoom(props: IsoRoomProps) {
         }}
         aria-label="Ilustração 3D do ambiente"
       >
+        <FrameDriver active={visible} fps={30} />
         <Scene {...props} />
       </Canvas>
     </div>

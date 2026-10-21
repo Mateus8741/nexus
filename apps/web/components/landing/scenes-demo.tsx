@@ -177,6 +177,7 @@ export function ScenesDemo() {
                 acOn={st.ac !== null}
                 tint={def.tint}
                 ambient={def.ambient}
+                lite
               />
             ) : (
               <div className="aspect-[552/430] w-full" />

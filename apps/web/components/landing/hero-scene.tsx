@@ -4,6 +4,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { FrameDriver } from "@/components/scenes/frame-driver";
 
 const WARM = "#ffbf73";
 const COOL = "#7fa2ff";
@@ -465,10 +466,10 @@ export default function HeroScene({ active, reducedMotion }: HeroSceneProps) {
 
   return (
     <Canvas
-      frameloop={active ? "always" : "never"}
-      dpr={[1, small ? 1.5 : 1.75]}
+      frameloop="demand"
+      dpr={[1, 1.25]}
       camera={{ position: [0, 1.2, 13], fov: 38, near: 0.1, far: 60 }}
-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      gl={{ antialias: !small, alpha: true, powerPreference: "default" }}
       style={{ background: "transparent" }}
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 0);
@@ -477,6 +478,7 @@ export default function HeroScene({ active, reducedMotion }: HeroSceneProps) {
       }}
       aria-hidden="true"
     >
+      <FrameDriver active={active} fps={30} />
       <Scene input={input} reduced={reducedMotion} small={small} />
     </Canvas>
   );

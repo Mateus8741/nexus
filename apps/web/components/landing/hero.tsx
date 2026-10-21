@@ -30,7 +30,20 @@ class SceneBoundary extends Component<
   }
 }
 
+/** Sem WebGL, em aparelhos fracos/economia de dados ou telas pequenas: usa o fallback estático. */
 function hasWebGL(): boolean {
+  const nav = navigator as Navigator & {
+    deviceMemory?: number;
+    connection?: { saveData?: boolean };
+  };
+  if (
+    window.innerWidth < 768 ||
+    (nav.hardwareConcurrency ?? 8) <= 4 ||
+    (nav.deviceMemory ?? 8) <= 4 ||
+    nav.connection?.saveData
+  ) {
+    return false;
+  }
   try {
     const c = document.createElement("canvas");
     return !!(c.getContext("webgl2") ?? c.getContext("webgl"));
