@@ -1,11 +1,11 @@
 "use client";
 
-import { Avatar, AvatarFallback } from "@nexus/ui/components/avatar";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, Menu, Search } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { OPEN_PALETTE_EVENT } from "@/lib/ui-events";
+import { UserMenu } from "./user-menu";
 
 interface TopbarProps {
   onOpenMobileNav: () => void;
@@ -73,9 +73,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
         >
           <Bell className="size-4" />
         </button>
-        <Avatar size="sm">
-          <AvatarFallback>MT</AvatarFallback>
-        </Avatar>
+        <UserMenu />
       </div>
     </header>
   );
